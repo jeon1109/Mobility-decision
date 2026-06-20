@@ -1,0 +1,79 @@
+spring:
+  application:
+    name: point-system
+
+  datasource:
+    url: jdbc:mysql://localhost:3308/mysql?useSSL=false&serverTimezone=Asia/Seoul
+    username: root
+    password: 1234
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  data:
+    redis:
+      host: 192.168.56.142
+      port: 6379
+
+    rabbitmq:
+      host: 192.168.56.142
+      port: 5672
+      username: admin
+      password: 1234
+
+  ai:
+    model:
+      chat: openai
+    openai:
+      api-key: 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
+      chat:
+        options:
+          model: gpt-4o-mini
+      embedding:
+        options:
+          model: text-embedding-3-small
+
+  thymeleaf:
+    cache: false
+
+  jpa:
+    # hibernate:
+    #  ddl-auto: update         # 애플리케이션 시작할 때마다 테이블 삭제 후 재생성
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQL8Dialect
+    open-in-view: false
+
+
+server:
+  port: 9091
+  address: 0.0.0.0
+
+jwt:
+  secret: "DadFufN4Oui8Bfv3ScFj6R9fyJ9hD45E6AGFsXgFsRhT4YSdSb"
+  refresh: "change-this-refresh-secret-to-64+chars-change-this-refresh-secret"
+  access-token-minutes: 15
+  refresh-token-days: 30
+
+logging:
+  level:
+    org.springframework.security: DEBUG
+    com.example.pointsystem: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+public:
+  api:
+    key: 6e75736245676972393779574c6f5a
+
+message:
+  exchange: members
+  queue:
+    user: member.users
+    join: member.joins
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
