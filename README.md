@@ -2,40 +2,40 @@
 
 **상황 기반 이동 추천 시스템** — 사용자의 상태·목적·지역을 분석하고, OpenAI와 서울시 실시간 도시데이터를 활용해 최적의 이동 전략을 제안합니다.
 
-| 항목 | 내용 |
-|------|------|
-| 프로젝트명 | `musinsaPointSystem` |
+| 항목     | 내용                                                         |
+|--------|------------------------------------------------------------|
+| 프로젝트명  | `musinsaPointSystem`                                       |
 | 메인 클래스 | `com.example.musinsaPointSystem.MssPointSystemApplication` |
-| 기본 포트 | `9091` |
-| 실행 프로필 | `local` (필수) |
+| 기본 포트  | `9093`                                                     |
+| 실행 프로필 | `local` (필수)                                               |
 
 ---
 
 ## 주요 기능
 
-| 기능 | 설명 |
-|------|------|
+| 기능           | 설명                                                             |
+|--------------|----------------------------------------------------------------|
 | **AI 이동 추천** | Spring AI + GPT-4o-mini가 상황을 분석하고, 필요 시 서울시 Open API를 Tool로 호출 |
-| **RAG Q&A** | VectorStore에 문서를 저장하고 질의응답 (`/api/ask`) |
-| **회원 인증** | JWT Access/Refresh 토큰, Redis 저장, REST API |
-| **메시지 큐** | 가입·로그인 성공 시 RabbitMQ 메시지 발행 |
+| **RAG Q&A**  | VectorStore에 문서를 저장하고 질의응답 (`/api/ask`)                        |
+| **회원 인증**    | JWT Access/Refresh 토큰, Redis 저장, REST API                      |
+| **메시지 큐**    | 가입·로그인 성공 시 RabbitMQ 메시지 발행                                    |
 
 ---
 
 ## 기술 스택
 
-| 구분 | 기술 |
-|------|------|
-| Language | Java 21 |
-| Framework | Spring Boot 3.5.7 |
-| AI | Spring AI 1.0, OpenAI (gpt-4o-mini, text-embedding-3-small) |
-| Database | MySQL 8, Spring Data JPA, QueryDSL |
-| Cache | Redis |
-| Message Queue | RabbitMQ (Spring AMQP) |
-| Security | Spring Security, JWT (jjwt 0.13) |
-| View | Thymeleaf, Tailwind CDN |
-| API Docs | springdoc-openapi (Swagger UI) |
-| Monitoring | Spring Boot Actuator, Micrometer |
+| 구분            | 기술                                                          |
+|---------------|-------------------------------------------------------------|
+| Language      | Java 21                                                     |
+| Framework     | Spring Boot 3.5.7                                           |
+| AI            | Spring AI 1.0, OpenAI (gpt-4o-mini, text-embedding-3-small) |
+| Database      | MySQL 8, Spring Data JPA, QueryDSL                          |
+| Cache         | Redis                                                       |
+| Message Queue | RabbitMQ (Spring AMQP)                                      |
+| Security      | Spring Security, JWT (jjwt 0.13)                            |
+| View          | Thymeleaf, Tailwind CDN                                     |
+| API Docs      | springdoc-openapi (Swagger UI)                              |
+| Monitoring    | Spring Boot Actuator, Micrometer                            |
 
 > 상세 버전·클래스 매핑: [docs/TECH_STACK.md](docs/TECH_STACK.md)
 
@@ -63,14 +63,13 @@ MobilityDecision (JSON) → result.html
 
 ### 사전 준비
 
-| 구성요소 | 설명 |
-|----------|------|
-| JDK 21 | Java Toolchain |
-| MySQL | 기본 `localhost:3308` |
-| Redis | Refresh Token 저장 |
-| RabbitMQ | 가입·로그인 이벤트 발행 |
-| OpenAI API Key | AI 추천·RAG |
-| 서울시 Open API Key | 실시간 도시데이터 |
+| 구성요소             | 설명                  |
+|------------------|---------------------|
+| JDK 21           | Java Toolchain      |
+| MySQL            | 기본 `localhost:3308` |
+| Redis            | Refresh Token 저장    |
+| RabbitMQ         | 가입·로그인 이벤트 발행       |
+| 서울시 Open API Key | 실시간 도시데이터           |
 
 ### 설정
 
@@ -111,13 +110,13 @@ gradlew.bat bootRun --args="--spring.profiles.active=local"
 
 ### 접속 URL
 
-| URL | 설명 |
-|-----|------|
-| http://localhost:9091/ | 로그인 |
-| http://localhost:9091/signup | 회원가입 |
-| http://localhost:9091/main | AI 이동 추천 (메인) |
+| URL                                         | 설명             |
+|---------------------------------------------|----------------|
+| http://localhost:9091/                      | 로그인            |
+| http://localhost:9091/signup                | 회원가입           |
+| http://localhost:9091/main                  | AI 이동 추천 (메인)  |
 | http://localhost:9091/swagger-ui/index.html | Swagger API 문서 |
-| http://localhost:9091/actuator/health | Health Check |
+| http://localhost:9091/actuator/health       | Health Check   |
 
 ---
 
@@ -125,23 +124,23 @@ gradlew.bat bootRun --args="--spring.profiles.active=local"
 
 ### 화면 (MVC)
 
-| Method | Path | 설명 |
-|--------|------|------|
-| GET | `/` | 로그인 페이지 |
-| GET | `/signup` | 회원가입 페이지 |
-| GET | `/main` | AI 추천 입력 폼 |
-| POST | `/api/recommend` | AI 이동 추천 → `result.html` |
-| POST | `/api/vector` | RAG 문서 4건 인덱싱 |
-| GET | `/api/ask?question=` | RAG 기반 질의응답 (JSON) |
+| Method | Path                 | 설명                       |
+|--------|----------------------|--------------------------|
+| GET    | `/`                  | 로그인 페이지                  |
+| GET    | `/signup`            | 회원가입 페이지                 |
+| GET    | `/main`              | AI 추천 입력 폼               |
+| POST   | `/api/recommend`     | AI 이동 추천 → `result.html` |
+| POST   | `/api/vector`        | RAG 문서 4건 인덱싱            |
+| GET    | `/api/ask?question=` | RAG 기반 질의응답 (JSON)       |
 
 ### 회원 (REST)
 
-| Method | Path | 설명 | 응답 |
-|--------|------|------|------|
-| POST | `/v1/member/join` | 회원가입 | `MemberResponse` |
-| POST | `/v1/member/login` | 로그인 | `TokenDto` |
-| POST | `/v1/member/reissue` | Refresh 토큰 재발급 | `TokenDto` |
-| GET | `/v1/member/logout` | 로그아웃 | 200 OK |
+| Method | Path                 | 설명             | 응답               |
+|--------|----------------------|----------------|------------------|
+| POST   | `/v1/member/join`    | 회원가입           | `MemberResponse` |
+| POST   | `/v1/member/login`   | 로그인            | `TokenDto`       |
+| POST   | `/v1/member/reissue` | Refresh 토큰 재발급 | `TokenDto`       |
+| GET    | `/v1/member/logout`  | 로그아웃           | 200 OK           |
 
 **로그인 / 재발급 / 로그아웃** 요청 시 `Authorization: Bearer {token}` 헤더가 필요합니다.
 
@@ -151,12 +150,12 @@ gradlew.bat bootRun --args="--spring.profiles.active=local"
 
 ### 입력 (`MobilityContext`)
 
-| 필드 | 예시 |
-|------|------|
-| `condition` | 피곤함, 급함 |
-| `purpose` | 출근, 쇼핑 |
-| `areaName` | 강남역 |
-| `areaCode` | 서울시 POI 코드 |
+| 필드          | 예시         |
+|-------------|------------|
+| `condition` | 피곤함, 급함    |
+| `purpose`   | 출근, 쇼핑     |
+| `areaName`  | 강남역        |
+| `areaCode`  | 서울시 POI 코드 |
 
 ### 출력 (`MobilityDecision`)
 
@@ -164,8 +163,12 @@ gradlew.bat bootRun --args="--spring.profiles.active=local"
 {
   "recommendation": "추천 이동 수단/경로",
   "reason": "추천 이유",
-  "usedData": ["참고한 데이터"],
-  "priority": ["우선 고려 요소"],
+  "usedData": [
+    "참고한 데이터"
+  ],
+  "priority": [
+    "우선 고려 요소"
+  ],
   "warning": "주의사항"
 }
 ```
@@ -208,11 +211,11 @@ musinsaPointSystem/
 
 ## RabbitMQ
 
-| 항목 | 값 |
-|------|-----|
-| Exchange | `members` (Topic) |
-| Queue (가입) | `member.users` |
-| Queue (로그인) | `member.joins` |
+| 항목          | 값                 |
+|-------------|-------------------|
+| Exchange    | `members` (Topic) |
+| Queue (가입)  | `member.users`    |
+| Queue (로그인) | `member.joins`    |
 
 가입·로그인 성공 시 `UserServiceImpl`에서 메시지를 발행합니다. Consumer(`@RabbitListener`)는 아직 없습니다.
 
@@ -220,11 +223,11 @@ musinsaPointSystem/
 
 ## 문서
 
-| 문서 | 내용 |
-|------|------|
-| [docs/TECH_STACK.md](docs/TECH_STACK.md) | 사용 기술·버전·기능별 매핑 |
-| [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md) | 아키텍처, 패키지 설명, 코드 읽는 순서 |
-| [docs/RABBITMQ_AND_TIMEUNIT_GUIDE.md](docs/RABBITMQ_AND_TIMEUNIT_GUIDE.md) | RabbitMQ 이벤트 설계 가이드 |
+| 문서                                                                         | 내용                     |
+|----------------------------------------------------------------------------|------------------------|
+| [docs/TECH_STACK.md](docs/TECH_STACK.md)                                   | 사용 기술·버전·기능별 매핑        |
+| [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md)                             | 아키텍처, 패키지 설명, 코드 읽는 순서 |
+| [docs/RABBITMQ_AND_TIMEUNIT_GUIDE.md](docs/RABBITMQ_AND_TIMEUNIT_GUIDE.md) | RabbitMQ 이벤트 설계 가이드    |
 
 ---
 

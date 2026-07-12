@@ -47,12 +47,23 @@ public class securityConfig {
                 );
         http.authorizeHttpRequests(auth -> auth
                 .requestMatchers("/error").permitAll()
-                // Thymeleaf 페이지: 익명(anonymous)이어도 접근해야 로그인/가입 화면이 보임
-                .requestMatchers("/login", "/signup", "/", "/chatroom").permitAll()
-                .requestMatchers("/auth/**", "/signup/**", "/main/**", "/pay/**", "/api/**", "/join/**",
-                        "/v1/member/**", "/views/**", "/v3/api-docs/**", "/swagger-ui/**", "/chat/**", "/ws/**",
-                        "/v3/api-docs/**",
-                        "/swagger-ui.html")
+                // React SPA 정적 리소스 및 클라이언트 라우트
+                .requestMatchers(
+                        "/",
+                        "/index.html",
+                        "/assets/**",
+                        "/favicon.svg",
+                        "/icons.svg",
+                        "/login",
+                        "/signup",
+                        "/main",
+                        "/loading",
+                        "/result",
+                        "/chatroom"
+                ).permitAll()
+                .requestMatchers("/api/**", "/v1/**", "/join/**",
+                        "/views/**", "/v3/api-docs/**", "/swagger-ui/**", "/chat/**", "/ws/**",
+                        "/swagger-ui.html", "/actuator/**")
                 .permitAll()
                 // .requestMatchers("/admin/**").hasAuthority("ADMIN")  // URL 보안: 관리자 페이지
                 .anyRequest().authenticated()
