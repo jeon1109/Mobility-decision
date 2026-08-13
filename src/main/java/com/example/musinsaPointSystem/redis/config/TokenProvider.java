@@ -1,9 +1,16 @@
 package com.example.musinsaPointSystem.redis.config;
 
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HexFormat;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -12,193 +19,160 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
+import com.example.musinsaPointSystem.common.jwt.TokenErrorCode;
+import com.example.musinsaPointSystem.common.jwt.TokenException;
 import com.example.musinsaPointSystem.redis.dto.TokenDto;
-import com.example.musinsaPointSystem.redis.utils.RedisUtil;
+import com.example.musinsaPointSystem.redis.repository.TokenStore;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.MalformedJwtException;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.UnsupportedJwtException;
-import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
-import io.jsonwebtoken.security.SecurityException;
-import lombok.extern.slf4j.Slf4j;
 
-@Slf4j
 @Component
 public class TokenProvider {
 	private static final String AUTHORITIES_KEY = "auth";
-	private static final String BEARER_TYPE = "Bearer";
-	private static final long ACCESS_TOKEN_EXPIRE_TIME = 1000 * 60 * 30;            // 30분
-	private static final long REFRESH_TOKEN_EXPIRE_TIME = 1000 * 60 * 60 * 24 * 7;  // 7일
+	private static final String REFRESH_MARKER = "isRefreshToken";
 	private final Key key;
-	private final RedisUtil redisUtil;
+	private final TokenStore tokenStore;
+	private final Duration accessTtl;
+	private final Duration refreshTtl;
 
-	public TokenProvider(@Value("${jwt.secret}") String secretKey, RedisUtil redisUtil) {
-		byte[] keyBytes = Decoders.BASE64.decode(secretKey);
-		this.key = Keys.secretKeyFor(SignatureAlgorithm.HS512);
-		this.redisUtil = redisUtil;
+	public TokenProvider(@Value("${jwt.secret}") String secretKey,
+		@Value("${jwt.access-token-minutes}") long accessTokenMinutes,
+		@Value("${jwt.refresh-token-days}") long refreshTokenDays,
+		TokenStore tokenStore) {
+		byte[] keyBytes = secretKey.getBytes(StandardCharsets.UTF_8);
+		if (keyBytes.length < 32) {
+			throw new IllegalArgumentException("JWT_SECRET must be at least 32 bytes");
+		}
+		this.key = Keys.hmacShaKeyFor(keyBytes);
+		this.tokenStore = tokenStore;
+		this.accessTtl = Duration.ofMinutes(accessTokenMinutes);
+		this.refreshTtl = Duration.ofDays(refreshTokenDays);
 	}
 
 	public TokenDto generateTokenDto(Authentication authentication) {
-		// 권한들 가져오기
 		String authorities = authentication.getAuthorities().stream()
 			.map(GrantedAuthority::getAuthority)
 			.collect(Collectors.joining(","));
+		Instant now = Instant.now();
+		Instant accessExpiration = now.plus(accessTtl);
+		Instant refreshExpiration = now.plus(refreshTtl);
 
-		String subject = authentication.getName();
-		log.info("[JWT-REDIS] TokenProvider — JWT 발급 시작 subject(이메일)={}, authorities={}", subject, authorities);
-		log.info(
-			"[JWT-REDIS] TokenProvider — Access/Refresh 는 모두 JWT 문자열이며, Redis 저장은 호출부(UserService)에서 refresh 만 수행");
-
-		String accessToken = generateAccessToken(subject, authorities);
-		String refreshToken = generateRefreshToken(subject, authorities);
-
-		long now = (new Date()).getTime();
-
-		log.info(
-			"[JWT-REDIS] TokenProvider — 발급 완료 access 길이={}자, refresh 길이={}자 (Redis 미사용, redisUtil 은 로그인 후 서비스에서 save 호출)",
-			accessToken.length(), refreshToken.length());
+		String accessToken = Jwts.builder()
+			.setId(UUID.randomUUID().toString())
+			.setSubject(authentication.getName())
+			.claim(AUTHORITIES_KEY, authorities)
+			.setIssuedAt(Date.from(now))
+			.setExpiration(Date.from(accessExpiration))
+			.signWith(key)
+			.compact();
+		String refreshToken = Jwts.builder()
+			.setId(UUID.randomUUID().toString())
+			.setSubject(authentication.getName())
+			.claim(AUTHORITIES_KEY, authorities)
+			.claim(REFRESH_MARKER, true)
+			.setIssuedAt(Date.from(now))
+			.setExpiration(Date.from(refreshExpiration))
+			.signWith(key)
+			.compact();
 
 		return TokenDto.builder()
-			.grantType(BEARER_TYPE)
+			.grantType("Bearer")
 			.accessToken(accessToken)
-			.accessTokenExpiresIn(new Date(now + ACCESS_TOKEN_EXPIRE_TIME).getTime())
+			.accessTokenExpiresIn(accessExpiration.toEpochMilli())
 			.refreshToken(refreshToken)
+			.refreshTokenExpiresIn(refreshTtl.toMillis())
 			.build();
 	}
 
-	private String generateAccessToken(String email, String authorities) {
-		long now = (new Date()).getTime();
-		Date accessTokenExpiresIn = new Date(now + ACCESS_TOKEN_EXPIRE_TIME);
-		return Jwts.builder()
-			.setSubject(email)
-			.claim(AUTHORITIES_KEY, authorities)
-			.setExpiration(accessTokenExpiresIn)
-			.signWith(key, SignatureAlgorithm.HS512)
-			.compact();
-	}
-
-	private String generateRefreshToken(String email, String authorities) {
-		long now = (new Date()).getTime();
-		return Jwts.builder()
-			.setSubject(email)
-			.claim(AUTHORITIES_KEY, authorities)
-			.setExpiration(new Date(now + REFRESH_TOKEN_EXPIRE_TIME))
-			.claim("isRefreshToken", true) // refreshToken 임을 나타내는 클레임 추가
-			.signWith(key, SignatureAlgorithm.HS512)
-			.compact();
-	}
-
-	public Authentication getAuthentication(String accessToken) {
-		// 토큰 복호화
-		Claims claims = parseClaims(accessToken);
-
-		if (claims.get(AUTHORITIES_KEY) == null) {
-			throw new RuntimeException("권한 정보가 없는 토큰입니다.");
+	public Claims parseAccessToken(String token) {
+		try {
+			Claims claims = parseClaims(token);
+			if (Boolean.TRUE.equals(claims.get(REFRESH_MARKER, Boolean.class))) {
+				throw new TokenException(TokenErrorCode.INVALID_TOKEN);
+			}
+			return claims;
+		} catch (ExpiredJwtException e) {
+			throw new TokenException(TokenErrorCode.TOKEN_EXPIRED);
+		} catch (TokenException e) {
+			throw e;
+		} catch (JwtException | IllegalArgumentException e) {
+			throw new TokenException(TokenErrorCode.INVALID_TOKEN);
 		}
+	}
 
-		// 클레임에서 권한 정보 가져오기
-		Collection<? extends GrantedAuthority> authorities =
-			Arrays.stream(claims.get(AUTHORITIES_KEY).toString().split(","))
-				.map(SimpleGrantedAuthority::new)
-				.collect(Collectors.toList());
+	public Claims parseRefreshToken(String token) {
+		try {
+			Claims claims = parseClaims(token);
+			if (!Boolean.TRUE.equals(claims.get(REFRESH_MARKER, Boolean.class))) {
+				throw new TokenException(TokenErrorCode.INVALID_REFRESH_TOKEN);
+			}
+			return claims;
+		} catch (TokenException e) {
+			throw e;
+		} catch (JwtException | IllegalArgumentException e) {
+			throw new TokenException(TokenErrorCode.INVALID_REFRESH_TOKEN);
+		}
+	}
 
-		// UserDetails 객체를 만들어서 Authentication 리턴
-		UserDetails principal = new User(claims.getSubject(), "", authorities);
+	public void assertNotBlacklisted(String token, Claims claims) {
+		if (tokenStore.isBlacklisted(tokenIdentifier(token, claims))) {
+			throw new TokenException(TokenErrorCode.TOKEN_BLACKLISTED);
+		}
+	}
 
+	public Authentication getAuthentication(Claims claims) {
+		String authoritiesClaim = claims.get(AUTHORITIES_KEY, String.class);
+		if (authoritiesClaim == null || authoritiesClaim.isBlank()) {
+			throw new TokenException(TokenErrorCode.INVALID_TOKEN);
+		}
+		Collection<? extends GrantedAuthority> authorities = Arrays.stream(authoritiesClaim.split(","))
+			.map(SimpleGrantedAuthority::new)
+			.toList();
+		User principal = new User(claims.getSubject(), "", authorities);
 		return new UsernamePasswordAuthenticationToken(principal, "", authorities);
+	}
+
+	public Authentication getAuthenticationFromRefreshToken(String refreshToken) {
+		return getAuthentication(parseRefreshToken(refreshToken));
 	}
 
 	public boolean validateTokenWithoutBlacklist(String token) {
 		try {
-			Jwts.parser()
-				.setSigningKey(key)
-				.build()
-				.parseClaimsJws(token);
+			parseClaims(token);
 			return true;
-		} catch (SecurityException | MalformedJwtException e) {
-			return false;
-		} catch (ExpiredJwtException e) {
-			return false;
-		} catch (UnsupportedJwtException e) {
-			return false;
-		} catch (IllegalArgumentException e) {
-			return false;
-		}
-	}
-
-	public boolean validateToken(String token) {
-		try {
-			Jwts.parser()
-				.setSigningKey(key)
-				.build()
-				.parseClaimsJws(token);
-
-			if (isBlacklisted(token)) {
-				return false;
-			}
-
-			return true;
-		} catch (SecurityException | MalformedJwtException e) {
-			return false;
-		} catch (ExpiredJwtException e) {
-			return false;
-		} catch (UnsupportedJwtException e) {
-			return false;
-		} catch (IllegalArgumentException e) {
+		} catch (JwtException | IllegalArgumentException e) {
 			return false;
 		}
 	}
 
 	public long getExpiration(String token) {
-		Date expiration = parseClaims(token).getExpiration();
-		return expiration.getTime() - System.currentTimeMillis();
+		return parseAccessToken(token).getExpiration().getTime() - System.currentTimeMillis();
 	}
 
 	public String getSubject(String token) {
 		return parseClaims(token).getSubject();
 	}
 
+	public String tokenIdentifier(String token, Claims claims) {
+		return claims.getId() != null ? claims.getId() : sha256(token);
+	}
+
 	private Claims parseClaims(String token) {
-		return Jwts.parser()
-			.setSigningKey(key)
-			.build()
-			.parseClaimsJws(token)
-			.getBody();
+		return Jwts.parser().setSigningKey(key).build().parseClaimsJws(token).getBody();
 	}
 
-	private boolean isBlacklisted(String token) {
-		return redisUtil.hasKey(RedisKeyPrefix.BLACKLIST_ACCESS_TOKEN + token);
-	}
-
-	public Authentication getAuthenticationFromRefreshToken(String refreshToken) {
-		Claims claims = parseClaims(refreshToken);
-
-		Boolean isRefreshToken = claims.get("isRefreshToken", Boolean.class);
-		if (isRefreshToken == null || !isRefreshToken) {
-			throw new RuntimeException("Refresh Token이 아닙니다.");
+	private static String sha256(String token) {
+		try {
+			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+				.digest(token.getBytes(StandardCharsets.UTF_8)));
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException("SHA-256 is unavailable", e);
 		}
-
-		String userId = claims.getSubject();
-		String auth = claims.get("auth", String.class);
-
-		if (auth == null || auth.isBlank()) {
-			throw new RuntimeException("권한 정보가 없는 토큰입니다.");
-		}
-
-		Collection<? extends GrantedAuthority> authorities =
-			Arrays.stream(auth.split(","))
-				.map(SimpleGrantedAuthority::new)
-				.collect(Collectors.toList());
-
-		User principal = new User(userId, "", authorities);
-
-		return new UsernamePasswordAuthenticationToken(principal, "", authorities);
 	}
 }

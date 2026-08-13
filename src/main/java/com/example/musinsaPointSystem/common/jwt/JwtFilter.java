@@ -2,66 +2,63 @@ package com.example.musinsaPointSystem.common.jwt;
 
 import java.io.IOException;
 
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.example.musinsaPointSystem.redis.config.TokenProvider;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
-@Slf4j
+@Component
 @RequiredArgsConstructor
 public class JwtFilter extends OncePerRequestFilter {
-	public static final String AUTHORIZATION_HEADER = "Authorization";
-	public static final String BEARER_PREFIX = "Bearer ";
-
 	private final TokenProvider tokenProvider;
+	private final ObjectMapper objectMapper;
 
 	@Override
-	protected void doFilterInternal(HttpServletRequest request,
-		HttpServletResponse response,
+	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
 		FilterChain filterChain) throws ServletException, IOException {
-
-		String jwt = resolveToken(request);
-		String path = request.getRequestURI();
-		boolean hasJwt = StringUtils.hasText(jwt);
-		boolean valid = hasJwt && tokenProvider.validateToken(jwt);
-
-		if (hasJwt) {
-			log.info(
-				"[JWT-REDIS] JwtFilter — path={}, Authorization JWT 있음, 길이={}자, validateToken={} (Redis 조회 없음, JWT 서명/만료만 검사)",
-				path, jwt.length(), valid);
-		} else {
-			log.debug("[JWT-REDIS] JwtFilter — path={}, JWT 없음", path);
+		String token = resolveToken(request);
+		if (token == null) {
+			filterChain.doFilter(request, response);
+			return;
 		}
 
-		if (valid && SecurityContextHolder.getContext().getAuthentication() == null
-			&& tokenProvider.validateToken(jwt)) {
-
-			Authentication authentication = tokenProvider.getAuthentication(jwt);
-
-			// SecurityContextHolder에 추가하기
-			SecurityContextHolder.getContext().setAuthentication(authentication);
-			log.info("[JWT-REDIS] JwtFilter — SecurityContext 에 Authentication 설정 완료 principal={}",
-				authentication.getName());
+		try {
+			Claims claims = tokenProvider.parseAccessToken(token);
+			tokenProvider.assertNotBlacklisted(token, claims);
+			if (SecurityContextHolder.getContext().getAuthentication() == null) {
+				Authentication authentication = tokenProvider.getAuthentication(claims);
+				SecurityContextHolder.getContext().setAuthentication(authentication);
+			}
+			filterChain.doFilter(request, response);
+		} catch (TokenException e) {
+			writeError(response, HttpServletResponse.SC_UNAUTHORIZED, e.getCode());
+		} catch (DataAccessException e) {
+			writeError(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE, TokenErrorCode.REDIS_UNAVAILABLE);
 		}
+	}
 
-		filterChain.doFilter(request, response);
+	private void writeError(HttpServletResponse response, int status, TokenErrorCode code) throws IOException {
+		response.setStatus(status);
+		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+		response.setCharacterEncoding("UTF-8");
+		objectMapper.writeValue(response.getWriter(), TokenErrorResponse.of(code));
 	}
 
 	private String resolveToken(HttpServletRequest request) {
-		String bearerToken = request.getHeader(AUTHORIZATION_HEADER);
-
-		if (StringUtils.hasText(bearerToken) && bearerToken.startsWith(BEARER_PREFIX)) {
-			return bearerToken.substring(BEARER_PREFIX.length());
-		}
-
-		return null;
+		String header = request.getHeader("Authorization");
+		return StringUtils.hasText(header) && header.startsWith("Bearer ") ? header.substring(7) : null;
 	}
 }

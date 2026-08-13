@@ -3,8 +3,6 @@ package com.example.musinsaPointSystem.users.service.impl;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -39,27 +37,19 @@ public class UserServiceImpl implements UserService {
 	private final TokenProvider tokenProvider;
 	private final RedisUtil redisUtil;
 	private final AuthenticationManager authenticationManager;
-	private RedisTemplate<String, String> redisTemplate;
-	private final RabbitTemplate rabbitTemplate;
+	private final RedisTemplate<String, String> redisTemplate;
 
 	// 큐 저장소
-	@Value("${message.queue.user}")
-	private String queueUsers;
-
-	@Value("${message.queue.join}")
-	private String queueJoins;
-
 	public UserServiceImpl(UserRepository jpaUserRepsitory,
 		PasswordEncoder passwordEncoder, TokenProvider tokenProvider,
 		RedisUtil redisUtil, AuthenticationManager authenticationManager,
-		RabbitTemplate rabbitTemplate) {
+		RedisTemplate<String, String> redisTemplate) {
 		this.jpaUserRepsitory = jpaUserRepsitory;
 		this.passwordEncoder = passwordEncoder;
 		this.tokenProvider = tokenProvider;
 		this.redisUtil = redisUtil;
 		this.authenticationManager = authenticationManager;
 		this.redisTemplate = redisTemplate;
-		this.rabbitTemplate = rabbitTemplate;
 	}
 
 	@Override
@@ -87,10 +77,6 @@ public class UserServiceImpl implements UserService {
 			.build();
 
 		Users saved = jpaUserRepsitory.save(entity);
-
-		if (saved.getUid() != null) {
-			rabbitTemplate.convertAndSend(queueUsers, saved.getUid());
-		}
 
 		return MemberResponse.builder()
 			.id(saved.getUid())
@@ -130,13 +116,14 @@ public class UserServiceImpl implements UserService {
 
 				// Redis에 리프레시 토큰 저장
 				log.info("[JWT-REDIS] 로그인 흐름 ③ — Access 는 응답으로만 전달, Refresh 만 Redis 에 email 키로 저장");
-				redisUtil.save(memberInfo.get().getEmail(), tokenDto.getRefreshToken());
+				redisUtil.setValue(
+					RedisKeyPrefix.REFRESH_TOKEN + memberInfo.get().getEmail(),
+					tokenDto.getRefreshToken(),
+					tokenDto.getRefreshTokenExpiresIn(),
+					TimeUnit.MILLISECONDS);
 				log.info("[JWT-REDIS] 로그인 흐름 ④ — 로그인 처리 완료 (클라이언트는 access 를 헤더에, refresh 는 별도 보관)");
-				log.info("Redis save key={}, value={}", memberInfo.get().getEmail(), tokenDto.getRefreshToken());
-
-				if (tokenDto.getAccessToken().length() > 0) {
-					rabbitTemplate.convertAndSend(queueJoins, tokenDto.getAccessToken());
-				}
+				log.info("Redis refresh token saved key={}",
+					RedisKeyPrefix.REFRESH_TOKEN + memberInfo.get().getEmail());
 
 				return tokenDto;
 			}
@@ -179,7 +166,10 @@ public class UserServiceImpl implements UserService {
 		// log.info("[JWT-REDIS] reissue — Bearer 제거 후 토큰 문자열 길이={}자 반환", raw.length());
 		// return raw;
 
-		if (!tokenProvider.validateTokenWithoutBlacklist(refreshToken)) {
+		if (refreshToken != null && refreshToken.startsWith("Bearer ")) {
+			refreshToken = refreshToken.substring(7);
+		}
+		if (refreshToken == null || !tokenProvider.validateTokenWithoutBlacklist(refreshToken)) {
 			throw new RuntimeException("유효하지 않은 Refresh Token 입니다.");
 		}
 
@@ -210,17 +200,11 @@ public class UserServiceImpl implements UserService {
 
 	@Transactional
 	public void logout(String accessToken) {
-		if (!tokenProvider.validateTokenWithoutBlacklist(accessToken)) {
-			throw new ApiException(BasicResponseMessage.UNAUTHORIZED);
-		}
-
-		Authentication authentication = tokenProvider.getAuthentication(accessToken);
-		String userId = authentication.getName();
-
-		// Refresh 삭제 (저장소 하나로 통일 권장)
-		//redisUtil.delete("refresh:" + userId);
-
-		redisTemplate.opsForValue().get("JWT_TOKEN:" + userId);
-		redisTemplate.delete("JWT_TOKEN:" + userId); //Token 삭제
+		var claims = tokenProvider.parseAccessToken(accessToken);
+		tokenProvider.assertNotBlacklisted(accessToken, claims);
+		long remaining = claims.getExpiration().getTime() - System.currentTimeMillis();
+		redisUtil.setValue(RedisKeyPrefix.BLACKLIST_ACCESS_TOKEN
+			+ tokenProvider.tokenIdentifier(accessToken, claims), "logout", remaining, TimeUnit.MILLISECONDS);
+		redisUtil.delete(RedisKeyPrefix.REFRESH_TOKEN + claims.getSubject());
 	}
 }

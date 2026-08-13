@@ -35,9 +35,15 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-
-    implementation 'com.mysql:mysql-connector-j'
+    implementation 'org.postgresql:postgresql'
+    
+    runtimeOnly 'com.mysql:mysql-connector-j'
+    runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
+    runtimeOnly 'org.postgresql:postgresql'
     runtimeOnly 'com.h2database:h2'
+    implementation 'org.flywaydb:flyway-core'
+    runtimeOnly 'org.flywaydb:flyway-mysql'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.16'
 
@@ -62,13 +68,10 @@ dependencies {
 
     implementation 'com.github.gavlyukovskiy:p6spy-spring-boot-starter:1.5.8'
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
-    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 
     // file upload
     implementation group: 'commons-fileupload', name: 'commons-fileupload', version: '1.4'
     compileOnly 'commons-io:commons-io:2.11.0'
-    //rabbitmq
-    implementation 'org.springframework.boot:spring-boot-starter-amqp'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     // Source: https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-webclient
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
@@ -78,10 +81,6 @@ dependencies {
     // security 모드 설정
     implementation 'org.springframework.boot:spring-boot-starter-security'
     testImplementation 'org.springframework.security:spring-security-test'
-    //rabbitmq
-    implementation 'org.springframework.boot:spring-boot-starter-amqp'
-    testImplementation 'org.springframework.amqp:spring-rabbit-test'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     //rag
     implementation 'org.springframework.ai:spring-ai-advisors-vector-store'
     // actuator

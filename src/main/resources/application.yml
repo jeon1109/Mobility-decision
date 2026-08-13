@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: point-system
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+
+jwt:
+  access-token-minutes: ${JWT_ACCESS_TOKEN_MINUTES:15}
+  refresh-token-days: ${JWT_REFRESH_TOKEN_DAYS:30}
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:${FRONTEND_URL:http://localhost:5173}}
+

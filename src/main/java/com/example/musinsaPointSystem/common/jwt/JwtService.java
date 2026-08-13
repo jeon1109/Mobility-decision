@@ -1,6 +1,7 @@
 package com.example.musinsaPointSystem.common.jwt;
 
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
 import javax.crypto.SecretKey;
@@ -27,10 +28,18 @@ public class JwtService {
 		@Value("${jwt.refresh}") String refreshSecret,
 		@Value("${jwt.access-token-minutes}") int accessExpMinutes,
 		@Value("${jwt.refresh-token-days}") int refreshExpDays) {
-		this.accessKey = Keys.hmacShaKeyFor(accessSecret.getBytes());
-		this.refreshKey = Keys.hmacShaKeyFor(refreshSecret.getBytes());
+		this.accessKey = jwtKey(accessSecret, "JWT_SECRET");
+		this.refreshKey = jwtKey(refreshSecret, "JWT_REFRESH_SECRET");
 		this.accessExpMinutes = accessExpMinutes;
 		this.refreshExpDays = refreshExpDays;
+	}
+
+	private static SecretKey jwtKey(String secret, String name) {
+		byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
+		if (bytes.length < 32) {
+			throw new IllegalArgumentException(name + " must be at least 32 bytes");
+		}
+		return Keys.hmacShaKeyFor(bytes);
 	}
 
 	public String generateAccess(Users user) {
