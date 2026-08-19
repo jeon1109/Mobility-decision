@@ -34,16 +34,16 @@
 
 ```xml
 languageLevel="JDK_X"
-project-jdk-name="ms-21"
+        project-jdk-name="ms-21"
 ```
 
 `JDK_X`는 유효한 언어 레벨이 아니어서, IntelliJ가 `java.util.concurrent` 패키지를 인식하지 못할 수 있습니다.
 
 ### 1.3 사용 위치 (현재 코드)
 
-| 파일 | 용도 |
-|------|------|
-| `RedisUtil.java` | `setValue(key, value, timeout, TimeUnit unit)` |
+| 파일                     | 용도                                                      |
+|------------------------|---------------------------------------------------------|
+| `RedisUtil.java`       | `setValue(key, value, timeout, TimeUnit unit)`          |
 | `UserServiceImpl.java` | refresh token 재발급 시 Redis TTL (`TimeUnit.MILLISECONDS`) |
 
 올바른 import:
@@ -55,11 +55,11 @@ import java.util.concurrent.TimeUnit;
 ### 1.4 해결 방법 (IntelliJ IDEA)
 
 1. **File → Project Structure → Project**
-   - **SDK**: JDK 21 (`ms-21` 또는 로컬 JDK 21)
-   - **Language level**: **21** (JDK_X 아님)
+    - **SDK**: JDK 21 (`ms-21` 또는 로컬 JDK 21)
+    - **Language level**: **21** (JDK_X 아님)
 2. **File → Settings → Build, Execution, Deployment → Build Tools → Gradle**
-   - **Gradle JVM**: JDK 21
-   - **Reload All Gradle Projects** 실행
+    - **Gradle JVM**: JDK 21
+    - **Reload All Gradle Projects** 실행
 3. `misc.xml`의 `languageLevel`이 **JDK_21**로 바뀌었는지 확인
 4. 여전히 오류면 **File → Invalidate Caches → Invalidate and Restart**
 5. import가 `java.util.concurrent.TimeUnit`인지 재확인 (오타·다른 클래스와 혼동 없음)
@@ -73,7 +73,8 @@ import java.util.concurrent.TimeUnit;
 
 ### 1.6 런타임 주의 (IDE와 별개)
 
-`UserServiceImpl.resolveRefreshToken()`에서 Redis TTL에 `newTokenDto.getRefreshTokenExpiresIn()`을 쓰는데, `TokenProvider.generateTokenDto()`가 **`refreshTokenExpiresIn`을 builder에 넣지 않으면** 값이 `null`이 되어 NPE가 날 수 있습니다.
+`UserServiceImpl.resolveRefreshToken()`에서 Redis TTL에 `newTokenDto.getRefreshTokenExpiresIn()`을
+쓰는데, `TokenProvider.generateTokenDto()`가 **`refreshTokenExpiresIn`을 builder에 넣지 않으면** 값이 `null`이 되어 NPE가 날 수 있습니다.
 
 reissue API를 사용할 계획이면:
 
@@ -86,20 +87,20 @@ reissue API를 사용할 계획이면:
 
 ### 2.1 현재 상태
 
-| 항목 | 상태 |
-|------|------|
-| Gradle 의존성 | `spring-boot-starter-amqp` **추가됨** (`build.gradle`) |
-| `application-*.yml` | RabbitMQ 연결 설정 **없음** |
-| Java Config / Publisher / Listener | **없음** |
+| 항목                                 | 상태                                                  |
+|------------------------------------|-----------------------------------------------------|
+| Gradle 의존성                         | `spring-boot-starter-amqp` **추가됨** (`build.gradle`) |
+| `application-*.yml`                | RabbitMQ 연결 설정 **없음**                               |
+| Java Config / Publisher / Listener | **없음**                                              |
 
 ### 2.2 도입 목적
 
 다음 **6가지 비즈니스 이벤트**를 메시지 큐로 발행하고, 이후 로그·알림·통계 등은 **Consumer**가 구독하도록 분리합니다.
 
-| 구분 | 성공 | 실패 |
-|------|------|------|
-| 로그인 | `auth.login.success` | `auth.login.failure` |
-| 회원가입 | `auth.signup.success` | `auth.signup.failure` |
+| 구분    | 성공                    | 실패                    |
+|-------|-----------------------|-----------------------|
+| 로그인   | `auth.login.success`  | `auth.login.failure`  |
+| 회원가입  | `auth.signup.success` | `auth.signup.failure` |
 | AI 분석 | `ai.analysis.success` | `ai.analysis.failure` |
 
 ### 2.3 왜 RabbitMQ인가
@@ -152,32 +153,32 @@ reissue API를 사용할 계획이면:
 }
 ```
 
-| 필드 | 설명 |
-|------|------|
-| `eventId` | UUID, 멱등·추적용 |
-| `eventType` | enum 상수 (`AUTH_LOGIN_SUCCESS` 등) |
-| `occurredAt` | ISO-8601 시각 |
-| `userEmail` | 가능하면 이메일(식별자). 없으면 null |
-| `traceId` | HTTP 요청 추적 ID (선택) |
-| `payload` | 이벤트별 추가 데이터 (Map 또는 타입별 객체) |
+| 필드           | 설명                               |
+|--------------|----------------------------------|
+| `eventId`    | UUID, 멱등·추적용                     |
+| `eventType`  | enum 상수 (`AUTH_LOGIN_SUCCESS` 등) |
+| `occurredAt` | ISO-8601 시각                      |
+| `userEmail`  | 가능하면 이메일(식별자). 없으면 null          |
+| `traceId`    | HTTP 요청 추적 ID (선택)               |
+| `payload`    | 이벤트별 추가 데이터 (Map 또는 타입별 객체)      |
 
 **메시지에 넣지 말 것**
 
-- 비밀번호, JWT 전체 문자열, OpenAI API Key, DB 비밀번호
+- 비밀번호, JWT 전체 문자열, OpenAI API, DB 비밀번호
 
 ### 3.3 EventType enum 예시
 
 ```java
 public enum EventType {
-    AUTH_LOGIN_SUCCESS("auth.login.success"),
-    AUTH_LOGIN_FAILURE("auth.login.failure"),
-    AUTH_SIGNUP_SUCCESS("auth.signup.success"),
-    AUTH_SIGNUP_FAILURE("auth.signup.failure"),
-    AI_ANALYSIS_SUCCESS("ai.analysis.success"),
-    AI_ANALYSIS_FAILURE("ai.analysis.failure");
+	AUTH_LOGIN_SUCCESS("auth.login.success"),
+	AUTH_LOGIN_FAILURE("auth.login.failure"),
+	AUTH_SIGNUP_SUCCESS("auth.signup.success"),
+	AUTH_SIGNUP_FAILURE("auth.signup.failure"),
+	AI_ANALYSIS_SUCCESS("ai.analysis.success"),
+	AI_ANALYSIS_FAILURE("ai.analysis.failure");
 
-    private final String routingKey;
-    // getter, constructor
+	private final String routingKey;
+	// getter, constructor
 }
 ```
 
@@ -202,10 +203,10 @@ public enum EventType {
 
 ### 3.5 발행 실패 처리
 
-| 단계 | 정책 |
-|------|------|
-| MVP | `try/catch` → 로그만 남기고 **본 요청(로그인·가입·AI)은 기존대로 성공/실패 처리** |
-| 운영 강화 | Transactional Outbox 패턴 (DB에 이벤트 저장 후 별도 스케줄러가 MQ 전송) |
+| 단계    | 정책                                                       |
+|-------|----------------------------------------------------------|
+| MVP   | `try/catch` → 로그만 남기고 **본 요청(로그인·가입·AI)은 기존대로 성공/실패 처리** |
+| 운영 강화 | Transactional Outbox 패턴 (DB에 이벤트 저장 후 별도 스케줄러가 MQ 전송)    |
 
 이벤트 발행 실패가 **로그인 성공 자체를 롤백하지 않도록** 하는 것이 일반적입니다.
 
@@ -261,11 +262,11 @@ docker run -d --name rabbitmq \
   rabbitmq:3-management
 ```
 
-| 항목 | 값 |
-|------|-----|
-| AMQP 포트 | 5672 |
-| 관리 UI | http://localhost:15672 |
-| 기본 계정 | guest / guest |
+| 항목      | 값                      |
+|---------|------------------------|
+| AMQP 포트 | 5672                   |
+| 관리 UI   | http://localhost:15672 |
+| 기본 계정   | guest / guest          |
 
 ### 5.2 `application-local.yml` 추가 예시
 
@@ -305,34 +306,36 @@ spring:
 ### 5.4 Publisher 코드 스케치
 
 ```java
+
 @Service
 @RequiredArgsConstructor
 public class RabbitEventPublisher implements EventPublisher {
 
-    private final RabbitTemplate rabbitTemplate;
+	private final RabbitTemplate rabbitTemplate;
 
-    @Override
-    public void publish(EventType type, DomainEvent event) {
-        rabbitTemplate.convertAndSend(
-            RabbitMqConstants.EXCHANGE_NAME,
-            type.getRoutingKey(),
-            event
-        );
-    }
+	@Override
+	public void publish(EventType type, DomainEvent event) {
+		rabbitTemplate.convertAndSend(
+			RabbitMqConstants.EXCHANGE_NAME,
+			type.getRoutingKey(),
+			event
+		);
+	}
 }
 ```
 
 ### 5.5 Consumer 코드 스케치 (선택)
 
 ```java
+
 @Component
 @RequiredArgsConstructor
 public class AuthEventLoggingListener {
 
-    @RabbitListener(queues = RabbitMqConstants.QUEUE_AUTH_LOGIN_SUCCESS)
-    public void onLoginSuccess(DomainEvent event) {
-        log.info("로그인 성공 이벤트: {}", event);
-    }
+	@RabbitListener(queues = RabbitMqConstants.QUEUE_AUTH_LOGIN_SUCCESS)
+	public void onLoginSuccess(DomainEvent event) {
+		log.info("로그인 성공 이벤트: {}", event);
+	}
 }
 ```
 
@@ -350,12 +353,12 @@ public class AuthEventLoggingListener {
 
 ### 6.1 인증 · 회원 (`UserServiceImpl`)
 
-| 이벤트 | 발행 시점 | 현재 코드 위치 |
-|--------|-----------|----------------|
-| `AUTH_SIGNUP_SUCCESS` | DB `save` 성공 후 | `memberJoin()` return 직전 |
-| `AUTH_SIGNUP_FAILURE` | 이메일 중복 | `DuplicateEmailException` throw 직전/후 |
-| `AUTH_LOGIN_SUCCESS` | 토큰 발급·Redis 저장 완료 후 | `searchLogin()` return 직전 |
-| `AUTH_LOGIN_FAILURE` | 이메일 없음, 비밀번호 불일치, `authenticate` 실패 | 각 `throw` 직전 |
+| 이벤트                   | 발행 시점                               | 현재 코드 위치                             |
+|-----------------------|-------------------------------------|--------------------------------------|
+| `AUTH_SIGNUP_SUCCESS` | DB `save` 성공 후                      | `memberJoin()` return 직전             |
+| `AUTH_SIGNUP_FAILURE` | 이메일 중복                              | `DuplicateEmailException` throw 직전/후 |
+| `AUTH_LOGIN_SUCCESS`  | 토큰 발급·Redis 저장 완료 후                 | `searchLogin()` return 직전            |
+| `AUTH_LOGIN_FAILURE`  | 이메일 없음, 비밀번호 불일치, `authenticate` 실패 | 각 `throw` 직전                         |
 
 **개선 권장**
 
@@ -364,10 +367,10 @@ public class AuthEventLoggingListener {
 
 ### 6.2 AI 분석 (`RecommendationService` / `ApiController`)
 
-| 이벤트 | 발행 시점 | 현재 코드 위치 |
-|--------|-----------|----------------|
-| `AI_ANALYSIS_SUCCESS` | `MobilityDecision` 파싱·캐시 저장 후 | `recommend()` return 직전 |
-| `AI_ANALYSIS_FAILURE` | AI 호출·JSON 파싱 예외 | `catch` 블록, `AiCommunicationException` 전 |
+| 이벤트                   | 발행 시점                         | 현재 코드 위치                                 |
+|-----------------------|-------------------------------|------------------------------------------|
+| `AI_ANALYSIS_SUCCESS` | `MobilityDecision` 파싱·캐시 저장 후 | `recommend()` return 직전                  |
+| `AI_ANALYSIS_FAILURE` | AI 호출·JSON 파싱 예외              | `catch` 블록, `AiCommunicationException` 전 |
 
 호출 API: `POST /api/recommend` (`ApiController`)
 
@@ -375,13 +378,13 @@ public class AuthEventLoggingListener {
 
 ```java
 eventPublisher.publish(
-    EventType.AUTH_LOGIN_SUCCESS,
-    DomainEvent.builder()
-        .eventType(EventType.AUTH_LOGIN_SUCCESS)
-        .userEmail(inputEmail)
-        .payload(Map.of("authorities", "..."))
-        .build()
-);
+	EventType.AUTH_LOGIN_SUCCESS,
+	DomainEvent.builder()
+	.eventType(EventType.AUTH_LOGIN_SUCCESS)
+	.userEmail(inputEmail)
+	.payload(Map.of("authorities","..."))
+	.build()
+	);
 ```
 
 ---
@@ -420,31 +423,31 @@ eventPublisher.publish(
 
 구현 RabbitMQ 전에 함께 점검하면 좋은 항목입니다.
 
-| 이슈 | 파일 | 설명 |
-|------|------|------|
-| IDE `JDK_X` | `.idea/misc.xml` | `TimeUnit` 등 JDK 타입 인식 실패 가능 |
-| `redisTemplate` 미주입 | `UserServiceImpl` | 생성자에 파라미터 없이 `this.redisTemplate = redisTemplate` 대입 |
-| `refreshTokenExpiresIn` 미설정 | `TokenProvider` | reissue 시 Redis TTL null 위험 |
-| `IllegalAccessError` | `UserServiceImpl` | 로그인 실패에 Error 계열 사용 → REST 처리·이벤트 발행에 부적합 |
-| AI catch 블록 | `RecommendationService` | `throw new Exception()` 래핑 → `AiCommunicationException` 등으로 정리 권장 |
+| 이슈                          | 파일                      | 설명                                                                |
+|-----------------------------|-------------------------|-------------------------------------------------------------------|
+| IDE `JDK_X`                 | `.idea/misc.xml`        | `TimeUnit` 등 JDK 타입 인식 실패 가능                                      |
+| `redisTemplate` 미주입         | `UserServiceImpl`       | 생성자에 파라미터 없이 `this.redisTemplate = redisTemplate` 대입              |
+| `refreshTokenExpiresIn` 미설정 | `TokenProvider`         | reissue 시 Redis TTL null 위험                                       |
+| `IllegalAccessError`        | `UserServiceImpl`       | 로그인 실패에 Error 계열 사용 → REST 처리·이벤트 발행에 부적합                         |
+| AI catch 블록                 | `RecommendationService` | `throw new Exception()` 래핑 → `AiCommunicationException` 등으로 정리 권장 |
 
 ---
 
 ## 참고: 관련 파일 경로
 
-| 주제 | 경로 |
-|------|------|
-| Gradle AMQP | `build.gradle` |
-| Redis + TimeUnit | `redis/utils/RedisUtil.java` |
-| 로그인/가입 | `users/service/impl/UserServiceImpl.java` |
-| AI 추천 | `data/apiService/RecommendationService.java` |
-| AI API | `data/apiController/ApiController.java` |
-| 로컬 설정 | `src/main/resources/application-local.yml` |
+| 주제               | 경로                                           |
+|------------------|----------------------------------------------|
+| Gradle AMQP      | `build.gradle`                               |
+| Redis + TimeUnit | `redis/utils/RedisUtil.java`                 |
+| 로그인/가입           | `users/service/impl/UserServiceImpl.java`    |
+| AI 추천            | `data/apiService/RecommendationService.java` |
+| AI API           | `data/apiController/ApiController.java`      |
+| 로컬 설정            | `src/main/resources/application-local.yml`   |
 
 ---
 
 ## 변경 이력
 
-| 날짜 | 내용 |
-|------|------|
+| 날짜         | 내용                                          |
+|------------|---------------------------------------------|
 | 2026-05-25 | 최초 작성 (TimeUnit IDE, RabbitMQ 6종 이벤트 전략·설정) |

@@ -99,6 +99,7 @@ public class securityConfig {
 			.toList());
 		config.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 		config.setAllowedHeaders(java.util.List.of("*"));
+		config.setExposedHeaders(java.util.List.of("X-Correlation-Id"));
 		config.setAllowCredentials(true);
 
 		var source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();
