@@ -3,7 +3,7 @@ package com.example.musinsaPointSystem.users.service.impl;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -15,6 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.musinsaPointSystem.common.error.ApiException;
 import com.example.musinsaPointSystem.common.error.DuplicateEmailException;
+import com.example.musinsaPointSystem.common.error.InvalidCredentialsException;
+import com.example.musinsaPointSystem.common.error.MemberNotFoundException;
+import com.example.musinsaPointSystem.common.jwt.TokenErrorCode;
+import com.example.musinsaPointSystem.common.jwt.TokenException;
 import com.example.musinsaPointSystem.redis.config.RedisKeyPrefix;
 import com.example.musinsaPointSystem.redis.config.TokenProvider;
 import com.example.musinsaPointSystem.redis.dto.TokenDto;
@@ -37,19 +41,16 @@ public class UserServiceImpl implements UserService {
 	private final TokenProvider tokenProvider;
 	private final RedisUtil redisUtil;
 	private final AuthenticationManager authenticationManager;
-	private final RedisTemplate<String, String> redisTemplate;
 
 	// 큐 저장소
 	public UserServiceImpl(UserRepository jpaUserRepsitory,
 		PasswordEncoder passwordEncoder, TokenProvider tokenProvider,
-		RedisUtil redisUtil, AuthenticationManager authenticationManager,
-		RedisTemplate<String, String> redisTemplate) {
+		RedisUtil redisUtil, AuthenticationManager authenticationManager) {
 		this.jpaUserRepsitory = jpaUserRepsitory;
 		this.passwordEncoder = passwordEncoder;
 		this.tokenProvider = tokenProvider;
 		this.redisUtil = redisUtil;
 		this.authenticationManager = authenticationManager;
-		this.redisTemplate = redisTemplate;
 	}
 
 	@Override
@@ -63,7 +64,7 @@ public class UserServiceImpl implements UserService {
 
 		// 2) 중복 사전 체크(UX 개선용) - 최종 방어는 DB UNIQUE
 		if (jpaUserRepsitory.existsByEmail(email)) {
-			throw new DuplicateEmailException(email);
+			throw new DuplicateEmailException();
 		}
 
 		UserRole role = UserRole.ADMIN;
@@ -76,7 +77,12 @@ public class UserServiceImpl implements UserService {
 			.delYn(false)
 			.build();
 
-		Users saved = jpaUserRepsitory.save(entity);
+		Users saved;
+		try {
+			saved = jpaUserRepsitory.save(entity);
+		} catch (DataIntegrityViolationException e) {
+			throw new DuplicateEmailException();
+		}
 
 		return MemberResponse.builder()
 			.id(saved.getUid())
@@ -90,27 +96,27 @@ public class UserServiceImpl implements UserService {
 		Optional<Users> memberInfo;
 		Optional<Users> memberEmail;
 
-		String inputEmail = request.getEmail();
+		String inputEmail = request.getEmail().trim().toLowerCase();
 		String inputPasword = request.getPassword();
 		memberEmail = jpaUserRepsitory.findByEmail(inputEmail);
 
 		TokenDto tokenDto;
 
 		if (memberEmail.isEmpty()) {
-			throw new IllegalAccessError("이메일이 일치하지 않습니다.");
+			throw new InvalidCredentialsException();
 		} else {
 			// 비밀번호 확인
 			if (!passwordEncoder.matches(inputPasword, memberEmail.get().getPassword())) {
-				throw new IllegalAccessError("비밀번호가 일치하지 않습니다.");
+				throw new InvalidCredentialsException();
 			} else {
-				log.info("[JWT-REDIS] 로그인 흐름 ① — 이메일/비밀번호 일치, 인증 토큰 생성 단계 진입 email={}", inputEmail);
+				log.info("[JWT-REDIS] 로그인 흐름 ① — 이메일/비밀번호 확인 완료, 인증 토큰 생성 단계 진입");
 				memberInfo = jpaUserRepsitory.findByEmailAndPassword(inputEmail, memberEmail.get().getPassword());
 
 				UsernamePasswordAuthenticationToken authenticationToken =
 					new UsernamePasswordAuthenticationToken(memberInfo.get().getEmail(), inputPasword);
 
 				Authentication authentication = authenticationManager.authenticate(authenticationToken);
-				log.info("[JWT-REDIS] 로그인 흐름 ② — AuthenticationManager 인증 완료 principal={}", authentication.getName());
+				log.info("[JWT-REDIS] 로그인 흐름 ② — AuthenticationManager 인증 완료");
 
 				tokenDto = tokenProvider.generateTokenDto(authentication);
 
@@ -122,8 +128,7 @@ public class UserServiceImpl implements UserService {
 					tokenDto.getRefreshTokenExpiresIn(),
 					TimeUnit.MILLISECONDS);
 				log.info("[JWT-REDIS] 로그인 흐름 ④ — 로그인 처리 완료 (클라이언트는 access 를 헤더에, refresh 는 별도 보관)");
-				log.info("Redis refresh token saved key={}",
-					RedisKeyPrefix.REFRESH_TOKEN + memberInfo.get().getEmail());
+				log.info("Redis refresh token saved");
 
 				return tokenDto;
 			}
@@ -141,48 +146,35 @@ public class UserServiceImpl implements UserService {
 				.name("anonymous")
 				.email("anonymous")
 				.build();
-		} else {
-			return MemberResponse.builder()
-				.id(memberId)
-				.name("test")
-				.email("gird644@gmail.com")
-				.build();
 		}
+		Users member = jpaUserRepsitory.findById(memberId)
+			.orElseThrow(MemberNotFoundException::new);
+		return MemberResponse.builder()
+			.id(member.getUid())
+			.name(member.getName())
+			.email(member.getEmail())
+			.build();
 	}
 
 	@Override
 	@Transactional(readOnly = true)
 	public TokenDto resolveRefreshToken(String refreshToken) {
-		// log.info("[JWT-REDIS] reissue 요청 — Authorization 헤더로 refresh 전달 여부 확인 (현재 구현은 Redis 조회/검증 없이 Bearer 제거만 수행)");
-		// if (!tokenProvider.validateTokenWithoutBlacklist(refreshToken)) {
-		// 	throw new RuntimeException("유효하지 않은 Refresh Token 입니다.");
-		// }
-		//
-		// if (refreshToken == null || !refreshToken.startsWith("Bearer ")) {
-		// 	throw new InvalidRefreshTokenException("리프레시 토큰이 누락되었거나 올바르지 않습니다.");
-		// }
-		//
-		// String raw = refreshToken.substring(7);
-		// log.info("[JWT-REDIS] reissue — Bearer 제거 후 토큰 문자열 길이={}자 반환", raw.length());
-		// return raw;
-
-		if (refreshToken != null && refreshToken.startsWith("Bearer ")) {
-			refreshToken = refreshToken.substring(7);
+		if (refreshToken == null || !refreshToken.startsWith("Bearer ")
+			|| refreshToken.length() == "Bearer ".length()) {
+			throw new TokenException(TokenErrorCode.INVALID_REFRESH_TOKEN);
 		}
-		if (refreshToken == null || !tokenProvider.validateTokenWithoutBlacklist(refreshToken)) {
-			throw new RuntimeException("유효하지 않은 Refresh Token 입니다.");
-		}
-
-		String userId = tokenProvider.getSubject(refreshToken);
+		refreshToken = refreshToken.substring(7);
+		var claims = tokenProvider.parseRefreshToken(refreshToken);
+		String userId = claims.getSubject();
 
 		String savedRefreshToken = redisUtil.getValue(RedisKeyPrefix.REFRESH_TOKEN + userId);
 
 		if (savedRefreshToken == null) {
-			throw new RuntimeException("로그아웃 되었거나 만료된 Refresh Token 입니다.");
+			throw new TokenException(TokenErrorCode.INVALID_REFRESH_TOKEN);
 		}
 
 		if (!savedRefreshToken.equals(refreshToken)) {
-			throw new RuntimeException("저장된 Refresh Token 과 일치하지 않습니다.");
+			throw new TokenException(TokenErrorCode.INVALID_REFRESH_TOKEN);
 		}
 
 		Authentication authentication = tokenProvider.getAuthenticationFromRefreshToken(refreshToken);
@@ -196,15 +188,5 @@ public class UserServiceImpl implements UserService {
 		);
 
 		return newTokenDto;
-	}
-
-	@Transactional
-	public void logout(String accessToken) {
-		var claims = tokenProvider.parseAccessToken(accessToken);
-		tokenProvider.assertNotBlacklisted(accessToken, claims);
-		long remaining = claims.getExpiration().getTime() - System.currentTimeMillis();
-		redisUtil.setValue(RedisKeyPrefix.BLACKLIST_ACCESS_TOKEN
-			+ tokenProvider.tokenIdentifier(accessToken, claims), "logout", remaining, TimeUnit.MILLISECONDS);
-		redisUtil.delete(RedisKeyPrefix.REFRESH_TOKEN + claims.getSubject());
 	}
 }

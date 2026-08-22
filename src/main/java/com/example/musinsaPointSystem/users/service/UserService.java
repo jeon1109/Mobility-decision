@@ -12,6 +12,4 @@ public interface UserService {
 	MemberResponse searchJoin(Long memberId);
 
 	TokenDto resolveRefreshToken(String refreshToken);
-
-	void logout(String accessToken);
 }

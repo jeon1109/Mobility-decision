@@ -3,110 +3,103 @@ package com.example.musinsaPointSystem.common;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.example.musinsaPointSystem.common.error.AiCommunicationException;
+import com.example.musinsaPointSystem.common.error.DuplicateEmailException;
+import com.example.musinsaPointSystem.common.error.InvalidCredentialsException;
+import com.example.musinsaPointSystem.common.error.MemberNotFoundException;
 import com.example.musinsaPointSystem.common.error.PublicDataException;
-import com.example.musinsaPointSystem.data.apiService.MobilityV2RecommendationService.AreaNotFoundException;
 import com.example.musinsaPointSystem.data.apiService.MobilityV2RecommendationService.InvalidMobilityV2RequestException;
+import com.example.musinsaPointSystem.data.apiService.SeoulAreaService.AreaNotFoundException;
 
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * React SPA용 JSON 예외 응답.
- */
 @Slf4j
 @RestControllerAdvice
 public class RestApiExceptionHandler {
 	@ExceptionHandler(InvalidMobilityV2RequestException.class)
-	public ResponseEntity<Map<String, Object>> handleV2BadRequest(InvalidMobilityV2RequestException e) {
-		return ResponseEntity.badRequest()
-			.body(v2ErrorBody("VALIDATION_ERROR", e.getMessage(), Map.of("availableModes", e.getMessage())));
+	public ResponseEntity<ApiErrorResponse> handleV2BadRequest(InvalidMobilityV2RequestException e) {
+		return ResponseEntity.badRequest().body(ApiErrorResponse.of(
+			"VALIDATION_ERROR", e.getMessage(), Map.of("availableModes", e.getMessage())));
 	}
 
 	@ExceptionHandler(AreaNotFoundException.class)
-	public ResponseEntity<Map<String, Object>> handleAreaNotFound(AreaNotFoundException e) {
+	public ResponseEntity<ApiErrorResponse> handleAreaNotFound(AreaNotFoundException e) {
 		return ResponseEntity.status(HttpStatus.NOT_FOUND)
-			.body(v2ErrorBody("AREA_NOT_FOUND", e.getMessage(), Map.of()));
+			.body(ApiErrorResponse.of("AREA_NOT_FOUND", e.getMessage()));
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
-	public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException e) {
+	public ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException e) {
 		Map<String, String> fields = new LinkedHashMap<>();
 		e.getBindingResult().getFieldErrors().forEach(error ->
 			fields.putIfAbsent(error.getField(), error.getDefaultMessage()));
-		return ResponseEntity.badRequest()
-			.body(v2ErrorBody("VALIDATION_ERROR", "요청 값을 확인해주세요.", fields));
+		return ResponseEntity.badRequest().body(
+			ApiErrorResponse.of("VALIDATION_ERROR", "요청 값을 확인해주세요.", fields));
 	}
 
 	@ExceptionHandler(HttpMessageNotReadableException.class)
-	public ResponseEntity<Map<String, Object>> handleUnreadable(HttpMessageNotReadableException e) {
-		return ResponseEntity.badRequest().body(v2ErrorBody(
-			"INVALID_REQUEST_BODY", "요청 JSON 또는 enum 값이 올바르지 않습니다.", Map.of()));
+	public ResponseEntity<ApiErrorResponse> handleUnreadable(HttpMessageNotReadableException e) {
+		return ResponseEntity.badRequest().body(ApiErrorResponse.of(
+			"INVALID_REQUEST_BODY", "요청 JSON 또는 enum 값이 올바르지 않습니다."));
+	}
+
+	@ExceptionHandler(DuplicateEmailException.class)
+	public ResponseEntity<ApiErrorResponse> handleDuplicateEmail(DuplicateEmailException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponse.of(
+			"DUPLICATE_EMAIL", e.getMessage(), Map.of("email", "이미 사용 중인 이메일입니다.")));
+	}
+
+	@ExceptionHandler(InvalidCredentialsException.class)
+	public ResponseEntity<ApiErrorResponse> handleInvalidCredentials(InvalidCredentialsException e) {
+		return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+			.body(ApiErrorResponse.of("INVALID_CREDENTIALS", e.getMessage()));
+	}
+
+	@ExceptionHandler(MemberNotFoundException.class)
+	public ResponseEntity<ApiErrorResponse> handleMemberNotFound(MemberNotFoundException e) {
+		return ResponseEntity.status(HttpStatus.NOT_FOUND)
+			.body(ApiErrorResponse.of("MEMBER_NOT_FOUND", e.getMessage()));
 	}
 
 	@ExceptionHandler(AiCommunicationException.class)
-	public ResponseEntity<Map<String, String>> handleAiException(AiCommunicationException e) {
-		log.warn("AI 통신 오류", e);
-		return ResponseEntity.internalServerError().body(errorBody(
-			"AI 응답 생성 실패",
-			"AI 안내를 생성하는 중 문제가 발생했습니다.",
-			e.getMessage()
-		));
+	public ResponseEntity<ApiErrorResponse> handleAiException(AiCommunicationException e) {
+		log.warn("AI 통신 또는 응답 검증 실패", e);
+		return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ApiErrorResponse.of(
+			"AI_UNAVAILABLE", "AI 안내를 생성하는 중 문제가 발생했습니다."));
 	}
 
 	@ExceptionHandler(PublicDataException.class)
-	public ResponseEntity<Map<String, String>> handlePublicDataException(PublicDataException e) {
+	public ResponseEntity<ApiErrorResponse> handlePublicDataException(PublicDataException e) {
 		log.warn("공공데이터 조회 오류", e);
-		return ResponseEntity.internalServerError().body(errorBody(
-			"도시 데이터 조회 실패",
-			"서울시 실시간 데이터를 불러오지 못했습니다.",
-			e.getMessage()
-		));
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiErrorResponse.of(
+			"PUBLIC_DATA_UNAVAILABLE", "서울시 실시간 데이터를 불러오지 못했습니다."));
 	}
 
 	@ExceptionHandler(IllegalArgumentException.class)
-	public ResponseEntity<Map<String, String>> handleBadRequest(IllegalArgumentException e) {
-		log.warn("잘못된 요청", e);
-		return ResponseEntity.badRequest().body(errorBody(
-			"잘못된 요청",
-			e.getMessage(),
-			null
-		));
+	public ResponseEntity<ApiErrorResponse> handleBadRequest(IllegalArgumentException e) {
+		log.warn("잘못된 요청: {}", e.getMessage());
+		return ResponseEntity.badRequest().body(ApiErrorResponse.of("BAD_REQUEST", e.getMessage()));
+	}
+
+	@ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+	public ResponseEntity<ApiErrorResponse> handleNotFound(Exception e) {
+		return ResponseEntity.status(HttpStatus.NOT_FOUND)
+			.body(ApiErrorResponse.of("NOT_FOUND", "요청한 API를 찾을 수 없습니다."));
 	}
 
 	@ExceptionHandler(Exception.class)
-	public ResponseEntity<Map<String, String>> handleException(Exception e) {
+	public ResponseEntity<ApiErrorResponse> handleException(Exception e) {
 		log.error("예상치 못한 서버 오류", e);
-		return ResponseEntity.internalServerError().body(errorBody(
-			"오류가 발생했습니다",
-			"잠시 후 다시 시도해주세요.",
-			null
-		));
-	}
-
-	private Map<String, String> errorBody(String title, String message, String detail) {
-		Map<String, String> body = new LinkedHashMap<>();
-		body.put("errorTitle", title);
-		body.put("errorMessage", message);
-		if (detail != null) {
-			body.put("detailMessage", detail);
-		}
-		return body;
-	}
-
-	private Map<String, Object> v2ErrorBody(String code, String message, Map<String, String> fieldErrors) {
-		Map<String, Object> body = new LinkedHashMap<>();
-		body.put("code", code);
-		body.put("message", message);
-		body.put("fieldErrors", fieldErrors);
-		body.put("correlationId", MDC.get("correlationId"));
-		return body;
+		return ResponseEntity.internalServerError().body(ApiErrorResponse.of(
+			"INTERNAL_SERVER_ERROR", "잠시 후 다시 시도해주세요."));
 	}
 }
