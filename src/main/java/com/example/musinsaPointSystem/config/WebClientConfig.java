@@ -1,5 +1,7 @@
 package com.example.musinsaPointSystem.config;
 
+import java.time.Clock;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -13,5 +15,10 @@ public class WebClientConfig {
                         configurer.defaultCodecs().maxInMemorySize(2 * 1024 * 1024)
                 )
                 .build();
+    }
+
+    @Bean
+    public Clock clock() {
+        return Clock.systemUTC();
     }
 }

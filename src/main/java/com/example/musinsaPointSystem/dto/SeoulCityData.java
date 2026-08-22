@@ -10,17 +10,21 @@ public record SeoulCityData(
 
 	public String toPromptSummary() {
 		if (!weather.available()) {
-			return "도시 데이터를 가져오지 못했습니다. 현재 혼잡도는 %s 상태입니다."
+			return "도시 데이터를 가져오지 못했습니다. 현재 날씨를 추정하거나 단정하지 마세요. "
+				+ "혼잡도는 %s 상태입니다."
 				.formatted(congestion);
 		}
 
 		String condition = weather.condition() == null ? "정보 없음" : weather.condition();
+		String observationLabel = weather.stale() ? "이전 관측 데이터" : "오늘 관측 데이터";
 		return """
-			현재 혼잡도는 %s 상태입니다.
-			현재 기온은 %s도입니다.
-			현재 날씨는 %s 입니다.
+			관측 구분은 %s입니다.
+			혼잡도는 %s 상태입니다.
+			관측 기온은 %s도입니다.
+			관측 날씨는 %s 입니다.
 			관측 시각은 %s 입니다.
 			""".formatted(
+			observationLabel,
 			congestion,
 			weather.temperatureCelsius(),
 			condition,
