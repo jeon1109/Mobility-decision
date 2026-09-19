@@ -157,7 +157,6 @@ public class UserServiceImpl implements UserService {
 	}
 
 	@Override
-	@Transactional(readOnly = true)
 	public TokenDto resolveRefreshToken(String refreshToken) {
 		if (refreshToken == null || !refreshToken.startsWith("Bearer ")
 			|| refreshToken.length() == "Bearer ".length()) {

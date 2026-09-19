@@ -9,6 +9,7 @@ import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 
@@ -19,6 +20,7 @@ public class MobilityPerformanceMetrics {
 	public static final String CACHE_REQUESTS = "mobility.decision.cache.requests";
 	public static final String TOOL_CALLS = "mobility.decision.tool.calls";
 	public static final String PUBLIC_API_REQUESTS = "mobility.decision.public-api.requests";
+	public static final String AI_VALIDATION_FAILURES = "mobility.decision.ai.validation.failures";
 
 	private static final Logger log = LoggerFactory.getLogger("mobility.performance");
 
@@ -79,6 +81,25 @@ public class MobilityPerformanceMetrics {
 			.tag("retry_count", "0")
 			.register(meterRegistry)
 			.increment();
+	}
+
+	public void recordAiValidationFailure() {
+		Counter.builder(AI_VALIDATION_FAILURES)
+			.description("Invalid structured AI decision responses")
+			.register(meterRegistry)
+			.increment();
+	}
+
+	public void recordAiTokens(Integer inputTokens, Integer outputTokens) {
+		if (inputTokens != null) Counter.builder("spring.ai.input.tokens")
+			.register(meterRegistry).increment(inputTokens);
+		if (outputTokens != null) Counter.builder("spring.ai.output.tokens")
+			.register(meterRegistry).increment(outputTokens);
+	}
+
+	public void recordCandidateCount(int count) {
+		DistributionSummary.builder("mobility.decision.candidate.count")
+			.register(meterRegistry).record(count);
 	}
 
 	private void record(String stage, String outcome, long durationNanos) {

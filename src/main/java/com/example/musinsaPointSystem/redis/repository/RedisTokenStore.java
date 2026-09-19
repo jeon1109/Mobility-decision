@@ -37,6 +37,14 @@ public class RedisTokenStore implements TokenStore {
 	}
 
 	@Override
+	public void revokeSession(String tokenId, String userId, Duration ttl) {
+		redis.blacklistAndDeleteRefresh(
+			RedisKeyPrefix.BLACKLIST_ACCESS_TOKEN + tokenId,
+			RedisKeyPrefix.REFRESH_TOKEN + userId,
+			ttl);
+	}
+
+	@Override
 	public boolean isBlacklisted(String tokenId) {
 		return redis.hasKey(RedisKeyPrefix.BLACKLIST_ACCESS_TOKEN + tokenId);
 	}

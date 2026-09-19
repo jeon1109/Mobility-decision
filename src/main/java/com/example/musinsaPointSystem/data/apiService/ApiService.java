@@ -18,16 +18,17 @@ import org.springframework.web.util.UriUtils;
 
 import com.example.musinsaPointSystem.dto.SeoulCityData;
 import com.example.musinsaPointSystem.dto.WeatherSnapshot;
-import com.example.musinsaPointSystem.dto.mobilityv2.CitySituation;
-import com.example.musinsaPointSystem.dto.mobilityv2.CitySituation.AirQuality;
-import com.example.musinsaPointSystem.dto.mobilityv2.CitySituation.Congestion;
-import com.example.musinsaPointSystem.dto.mobilityv2.CitySituation.CongestionForecast;
-import com.example.musinsaPointSystem.dto.mobilityv2.CitySituation.DataStatus;
-import com.example.musinsaPointSystem.dto.mobilityv2.CitySituation.NearbyMobility;
-import com.example.musinsaPointSystem.dto.mobilityv2.CitySituation.NearbySnapshot;
-import com.example.musinsaPointSystem.dto.mobilityv2.CitySituation.RoadTraffic;
-import com.example.musinsaPointSystem.dto.mobilityv2.CitySituation.Weather;
-import com.example.musinsaPointSystem.dto.mobilityv2.CitySituation.WeatherForecast;
+import com.example.musinsaPointSystem.dto.mobility.CitySituation;
+import com.example.musinsaPointSystem.dto.mobility.CitySituation.AirQuality;
+import com.example.musinsaPointSystem.dto.mobility.CitySituation.Congestion;
+import com.example.musinsaPointSystem.dto.mobility.CitySituation.CongestionForecast;
+import com.example.musinsaPointSystem.dto.mobility.CitySituation.DataStatus;
+import com.example.musinsaPointSystem.dto.mobility.CitySituation.NearbyMobility;
+import com.example.musinsaPointSystem.dto.mobility.CitySituation.NearbyPlace;
+import com.example.musinsaPointSystem.dto.mobility.CitySituation.NearbySnapshot;
+import com.example.musinsaPointSystem.dto.mobility.CitySituation.RoadTraffic;
+import com.example.musinsaPointSystem.dto.mobility.CitySituation.Weather;
+import com.example.musinsaPointSystem.dto.mobility.CitySituation.WeatherForecast;
 import com.example.musinsaPointSystem.performance.MobilityPerformanceMetrics;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -63,16 +64,16 @@ public class ApiService {
 	}
 
 	public SeoulCityData getCityData(String areaCode) {
-		ParsedCity parsed = load(areaCode, areaCode);
+		TrafficDataSnapshot parsed = load(areaCode, areaCode);
 		return parsed == null ? SeoulCityData.unavailable() : parsed.legacy();
 	}
 
 	public CitySituation getCitySituation(String areaCode, String areaName) {
-		ParsedCity parsed = load(areaCode, areaName);
+		TrafficDataSnapshot parsed = load(areaCode, areaName);
 		return parsed == null ? CitySituation.unavailable(areaCode, areaName) : parsed.situation();
 	}
 
-	private ParsedCity load(String areaCode, String areaName) {
+	private TrafficDataSnapshot load(String areaCode, String areaName) {
 		long startedAt = System.nanoTime();
 		try {
 			String encodedArea = UriUtils.encodePathSegment(areaCode, StandardCharsets.UTF_8);
@@ -80,7 +81,7 @@ public class ApiService {
 				+ "/json/citydata/1/5/" + encodedArea;
 			String raw = metrics.record("public.seoul-city-data", () -> webClient.get().uri(url)
 				.retrieve().bodyToMono(String.class).block());
-			ParsedCity parsed = parse(raw, areaCode, areaName);
+			TrafficDataSnapshot parsed = parseSnapshot(raw, areaCode, areaName);
 			metrics.recordPublicApiRequest("success", false);
 			metrics.recordDuration("public.total", "success", System.nanoTime() - startedAt);
 			log.info("서울시 도시데이터 파싱 완료, areaCode={}, congestionStatus={}, weatherStatus={}, "
@@ -110,7 +111,7 @@ public class ApiService {
 		}
 	}
 
-	private ParsedCity parse(String raw, String requestedCode, String requestedName) {
+	public TrafficDataSnapshot parseSnapshot(String raw, String requestedCode, String requestedName) {
 		try {
 			JsonNode root = objectMapper.readTree(raw);
 			validateProviderResult(root);
@@ -124,8 +125,8 @@ public class ApiService {
 			Congestion congestion = congestionLevel == null
 				? Congestion.unavailable()
 				: new Congestion(status(populationTime, Duration.ofMinutes(30)), congestionLevel,
-					text(population, "AREA_CONGEST_MSG"), integer(population, "AREA_PPLTN_MIN"),
-					integer(population, "AREA_PPLTN_MAX"), normalizeTime(populationTime), SOURCE);
+				text(population, "AREA_CONGEST_MSG"), integer(population, "AREA_PPLTN_MIN"),
+				integer(population, "AREA_PPLTN_MAX"), normalizeTime(populationTime), SOURCE);
 
 			JsonNode weatherNode = first(city.path("WEATHER_STTS"), "WEATHER_STTS");
 			Double temperature = number(weatherNode, "TEMP");
@@ -135,19 +136,20 @@ public class ApiService {
 			Weather weather = weatherStatus == DataStatus.UNAVAILABLE
 				? Weather.unavailable()
 				: new Weather(weatherStatus, temperature, text(weatherNode, "SKY_STTS"),
-					text(weatherNode, "PRECPT_TYPE"), number(weatherNode, "HUMIDITY"),
-					normalizeTime(weatherTime), SOURCE);
+				text(weatherNode, "PRECPT_TYPE"), number(weatherNode, "HUMIDITY"),
+				normalizeTime(weatherTime), SOURCE);
 
 			JsonNode roadNode = city.path("ROAD_TRAFFIC_STTS");
-			if (roadNode.isArray()) roadNode = roadNode.path(0);
+			if (roadNode.isArray())
+				roadNode = roadNode.path(0);
 			JsonNode averageRoad = first(roadNode.path("AVG_ROAD_DATA"), "AVG_ROAD_DATA");
 			String roadLevel = text(averageRoad, "ROAD_TRAFFIC_IDX");
 			String roadTime = text(averageRoad, "ROAD_TRAFFIC_TIME");
 			RoadTraffic road = roadLevel == null
 				? RoadTraffic.unavailable()
 				: new RoadTraffic(status(roadTime, Duration.ofMinutes(30)), roadLevel,
-					number(averageRoad, "ROAD_TRAFFIC_SPD"), text(averageRoad, "ROAD_MSG"),
-					normalizeTime(roadTime), SOURCE);
+				number(averageRoad, "ROAD_TRAFFIC_SPD"), text(averageRoad, "ROAD_MSG"),
+				normalizeTime(roadTime), SOURCE);
 
 			AirQuality air = parseAirQuality(weatherNode);
 			List<WeatherForecast> weatherForecasts = parseWeatherForecasts(weatherNode);
@@ -158,8 +160,9 @@ public class ApiService {
 			WeatherSnapshot legacyWeather = temperature == null
 				? WeatherSnapshot.unavailable()
 				: new WeatherSnapshot(temperature, text(weatherNode, "SKY_STTS"), weatherTime,
-					SOURCE, true, weatherStatus != DataStatus.LIVE);
-			return new ParsedCity(new SeoulCityData(valueOr(congestionLevel, "정보 없음"), legacyWeather), situation);
+				SOURCE, true, weatherStatus != DataStatus.LIVE);
+			return new TrafficDataSnapshot(new SeoulCityData(valueOr(congestionLevel, "정보 없음"), legacyWeather),
+				situation);
 		} catch (ProviderResponseException e) {
 			throw e;
 		} catch (Exception e) {
@@ -170,10 +173,12 @@ public class ApiService {
 	private AirQuality parseAirQuality(JsonNode weather) {
 		Double pm10 = number(weather, "PM10");
 		Double pm25 = number(weather, "PM25");
-		if (pm10 == null && pm25 == null) return null;
+		if (pm10 == null && pm25 == null)
+			return null;
 		String observedAt = text(weather, "WEATHER_TIME");
 		DataStatus status = status(observedAt, Duration.ofMinutes(90));
-		if (status == DataStatus.UNAVAILABLE) return null;
+		if (status == DataStatus.UNAVAILABLE)
+			return null;
 		return new AirQuality(status, pm10, text(weather, "PM10_INDEX"), pm25,
 			text(weather, "PM25_INDEX"), normalizeTime(observedAt), SOURCE);
 	}
@@ -183,7 +188,8 @@ public class ApiService {
 		List<WeatherForecast> result = new ArrayList<>();
 		for (JsonNode forecast : iterable(forecasts)) {
 			String forecastAt = normalizeTime(text(forecast, "FCST_DT"));
-			if (forecastAt == null) continue;
+			if (forecastAt == null)
+				continue;
 			result.add(new WeatherForecast(forecastAt,
 				text(forecast, "SKY_STTS"), text(forecast, "PRECPT_TYPE"),
 				number(forecast, "RAIN_CHANCE"), number(forecast, "TEMP"), SOURCE));
@@ -196,7 +202,8 @@ public class ApiService {
 		List<CongestionForecast> result = new ArrayList<>();
 		for (JsonNode forecast : iterable(forecasts)) {
 			String forecastAt = normalizeTime(text(forecast, "FCST_TIME"));
-			if (forecastAt == null) continue;
+			if (forecastAt == null)
+				continue;
 			result.add(new CongestionForecast(forecastAt,
 				text(forecast, "FCST_CONGEST_LVL"), integer(forecast, "FCST_PPLTN_MIN"),
 				integer(forecast, "FCST_PPLTN_MAX"), SOURCE));
@@ -206,32 +213,47 @@ public class ApiService {
 
 	private NearbyMobility parseNearbyMobility(JsonNode city) {
 		return new NearbyMobility(
-			nearbySnapshot(city, "SUB_STTS"),
-			nearbySnapshot(city, "BUS_STN_STTS"),
-			nearbySnapshot(city, "SBIKE_STTS"),
-			nearbySnapshot(city, "PRK_STTS"),
-			nearbySnapshot(city, "CHARGER_STTS")
+			nearbySnapshot(city, "SUB_STTS", "SUB_STN_NM"),
+			nearbySnapshot(city, "BUS_STN_STTS", null),
+			nearbySnapshot(city, "SBIKE_STTS", null),
+			nearbySnapshot(city, "PRK_STTS", null),
+			nearbySnapshot(city, "CHARGER_STTS", null)
 		);
 	}
 
-	private NearbySnapshot nearbySnapshot(JsonNode city, String field) {
+	private NearbySnapshot nearbySnapshot(JsonNode city, String field, String nameField) {
 		JsonNode wrapper = city.path(field);
-		if (wrapper.isMissingNode() || wrapper.isNull()) return NearbySnapshot.unavailable();
+		if (wrapper.isMissingNode() || wrapper.isNull())
+			return NearbySnapshot.unavailable();
 		JsonNode values = unwrap(wrapper, field);
 		if (values.isObject() && values.isEmpty()) {
-			return new NearbySnapshot(DataStatus.LIVE, 0, null, SOURCE);
+			return new NearbySnapshot(DataStatus.LIVE, 0, null, SOURCE, List.of());
 		}
+		List<NearbyPlace> places = new ArrayList<>();
 		int count = 0;
-		for (JsonNode ignored : iterable(values)) count++;
-		return new NearbySnapshot(DataStatus.LIVE, count, null, SOURCE);
+		for (JsonNode value : iterable(values)) {
+			if (nameField == null) {
+				count++;
+				continue;
+			}
+			String name = text(value, nameField);
+			if (name != null && places.stream().noneMatch(place -> place.name().equals(name))) {
+				places.add(new NearbyPlace(name));
+			}
+		}
+		if (nameField != null)
+			count = places.size();
+		return new NearbySnapshot(DataStatus.LIVE, count, null, SOURCE, places);
 	}
 
 	private DataStatus status(String providerTime, Duration maxAge) {
-		if (providerTime == null) return DataStatus.STALE;
+		if (providerTime == null)
+			return DataStatus.STALE;
 		try {
 			ZonedDateTime observed = LocalDateTime.parse(providerTime, PROVIDER_TIME).atZone(SEOUL);
 			ZonedDateTime now = ZonedDateTime.now(clock).withZoneSameInstant(SEOUL);
-			if (observed.isAfter(now.plusMinutes(10))) return DataStatus.UNAVAILABLE;
+			if (observed.isAfter(now.plusMinutes(10)))
+				return DataStatus.UNAVAILABLE;
 			return observed.isBefore(now.minus(maxAge)) ? DataStatus.STALE : DataStatus.LIVE;
 		} catch (RuntimeException e) {
 			return DataStatus.STALE;
@@ -239,7 +261,8 @@ public class ApiService {
 	}
 
 	private String normalizeTime(String value) {
-		if (value == null) return null;
+		if (value == null)
+			return null;
 		try {
 			return LocalDateTime.parse(value, PROVIDER_TIME).atZone(SEOUL).toOffsetDateTime().toString();
 		} catch (RuntimeException e) {
@@ -254,9 +277,11 @@ public class ApiService {
 	private Congestion normalize(Congestion value) {
 		return value.status() == DataStatus.UNAVAILABLE ? Congestion.unavailable() : value;
 	}
+
 	private Weather normalize(Weather value) {
 		return value.status() == DataStatus.UNAVAILABLE ? Weather.unavailable() : value;
 	}
+
 	private RoadTraffic normalize(RoadTraffic value) {
 		return value.status() == DataStatus.UNAVAILABLE ? RoadTraffic.unavailable() : value;
 	}
@@ -269,52 +294,69 @@ public class ApiService {
 		}
 		return city;
 	}
+
 	private void validateProviderResult(JsonNode root) {
 		JsonNode result = providerPayload(root).path("RESULT");
-		String code = text(result, "RESULT.CODE");
+		String code = valueOr(text(result, "RESULT.CODE"), text(result, "CODE"));
 		if (code != null && !"INFO-000".equals(code)) {
 			throw new ProviderResponseException(code);
 		}
 	}
+
 	private JsonNode providerPayload(JsonNode root) {
 		JsonNode wrapped = root.path("SeoulRtd.citydata");
 		return wrapped.isMissingNode() || wrapped.isNull() ? root : wrapped;
 	}
+
 	private JsonNode first(JsonNode node, String wrapper) {
 		JsonNode value = unwrap(node, wrapper);
 		return value.isArray() ? value.path(0) : value;
 	}
+
 	private JsonNode unwrap(JsonNode node, String wrapper) {
 		return node.isObject() && node.has(wrapper) ? node.path(wrapper) : node;
 	}
+
 	private Iterable<JsonNode> iterable(JsonNode node) {
 		return node.isArray() ? node : node.isMissingNode() || node.isNull() ? List.of() : List.of(node);
 	}
+
 	private String text(JsonNode node, String field) {
 		String value = node.path(field).asText(null);
 		return value == null || value.isBlank() ? null : value.trim();
 	}
+
 	private Double number(JsonNode node, String field) {
 		String value = text(node, field);
-		try { return value == null ? null : Double.valueOf(value); }
-		catch (NumberFormatException e) { return null; }
+		try {
+			return value == null ? null : Double.valueOf(value);
+		} catch (NumberFormatException e) {
+			return null;
+		}
 	}
+
 	private Integer integer(JsonNode node, String field) {
 		Double value = number(node, field);
 		return value == null ? null : value.intValue();
 	}
+
 	private String valueOr(String value, String fallback) {
 		return value == null ? fallback : value;
 	}
 
-	private record ParsedCity(SeoulCityData legacy, CitySituation situation) {}
+	public record TrafficDataSnapshot(SeoulCityData legacy, CitySituation situation) {
+	}
 
 	private static final class ProviderResponseException extends RuntimeException {
 		private final String providerCode;
+
 		private ProviderResponseException(String providerCode) {
 			super("Seoul CityData provider error: " + providerCode);
 			this.providerCode = providerCode;
 		}
-		private String providerCode() { return providerCode; }
+
+		private String providerCode() {
+			return providerCode;
+		}
 	}
 }

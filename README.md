@@ -15,10 +15,10 @@
 
 | 기능           | 설명                                                             |
 |--------------|----------------------------------------------------------------|
-| **AI 이동 추천** | Spring AI + GPT-4o-mini가 상황을 분석하고, 필요 시 서울시 Open API를 Tool로 호출 |
+| **이동 의사결정 지원** | 실제 이동 후보를 Java로 평가하고 Spring AI가 근거·대안·위험을 설명 |
+| **장소 자동완성** | Backend Kakao Local Adapter로 출발지·목적지 검색, 좌표 및 행정구역 확인 |
 | **RAG Q&A**  | VectorStore에 문서를 저장하고 질의응답 (`/api/ask`)                        |
 | **회원 인증**    | JWT Access/Refresh 토큰, Redis 저장, REST API                      |
-| **메시지 큐**    | 가입·로그인 성공 시 RabbitMQ 메시지 발행                                    |
 
 ---
 
@@ -27,11 +27,10 @@
 | 구분            | 기술                                                          |
 |---------------|-------------------------------------------------------------|
 | Language      | Java 21                                                     |
-| Framework     | Spring Boot 3.5.7                                           |
-| AI            | Spring AI 1.0, OpenAI (gpt-4o-mini, text-embedding-3-small) |
+| Framework     | Spring Boot 3.5.15                                           |
+| AI            | Spring AI 1.1.8, OpenAI |
 | Database      | MySQL 8, Spring Data JPA, QueryDSL                          |
 | Cache         | Redis                                                       |
-| Message Queue | RabbitMQ (Spring AMQP)                                      |
 | Security      | Spring Security, JWT (jjwt 0.13)                            |
 | View          | Thymeleaf, Tailwind CDN                                     |
 | API Docs      | springdoc-openapi (Swagger UI)                              |
@@ -44,17 +43,14 @@
 ## 시스템 흐름
 
 ```
-[사용자] /main 에서 상태·목적·지역 입력
-    ↓
-POST /api/recommend
-    ↓
-RecommendationService ── 캐시 hit → 즉시 반환
-    ↓ miss
-MobilityAgentService (Spring AI ChatClient)
-    ↓
-SeoulCityDataTool (@Tool) ── 서울시 Open API (혼잡도·교통·날씨)
-    ↓
-MobilityDecision (JSON) → result.html
+[React Client]
+    ↓ POST /api/v1/mobility-decisions (기존 계약 유지)
+MobilityDecisionOrchestrator
+    ├─ CurrentEvidenceUseCase (CITYDATA + 주변역 + 지하철 도착)
+    ├─ MobilityCandidateProvider (Kakao Routing)
+    ├─ CandidateEvaluator (결정론 평가)
+    ├─ DecisionEvaluator (Spring AI 설명)
+    └─ DecisionPersistenceService (짧은 DB Transaction)
 ```
 
 ---
@@ -68,8 +64,8 @@ MobilityDecision (JSON) → result.html
 | JDK 21           | Java Toolchain      |
 | MySQL            | 기본 `localhost:3308` |
 | Redis            | Refresh Token 저장    |
-| RabbitMQ         | 가입·로그인 이벤트 발행       |
 | 서울시 Open API Key | 실시간 도시데이터           |
+| Kakao REST API Key | 장소검색·행정구역·주변역·Routing 확인 |
 
 ### 설정
 
@@ -82,8 +78,9 @@ spring:
   ai.openai.api-key:    # OpenAI Key
 
 jwt:                    # JWT secret, 만료 시간
-public.api.key:         # 서울시 Open API Key
-message:                # RabbitMQ exchange / queue 이름
+public.api.key:         # 서울시 CITYDATA API Key
+seoul.open-api.key:     # 서울시 지하철 도착 API Key
+location.kakao.api-key: # Kakao REST API Key
 ```
 
 > API Key·DB 비밀번호는 환경 변수로 관리하는 것을 권장합니다.
@@ -144,8 +141,34 @@ gradlew.bat bootRun --args="--spring.profiles.active=local"
 
 **로그인 / 재발급 / 로그아웃** 요청 시 `Authorization: Bearer {token}` 헤더가 필요합니다.
 
+### Mobility Decision (REST)
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/v1/places/search?q=` | 장소 자동완성 |
+| POST | `/api/v1/places/resolve` | 좌표 기반 행정구역·CITYDATA 지역 판별 |
+| POST | `/api/v1/mobility/context` | Location 기준 현재 Evidence 조회 |
+| POST | `/api/v1/mobility/decision-cases` | 실제 후보 수집·평가·AI 설명·Decision 저장 |
+| POST | `/api/v1/mobility/decision-cases/{id}/selection` | 사용자 최종 후보 선택 저장 |
+
+DecisionCase 생성과 사용자 선택 API는 JWT 인증이 필요합니다.
+
 ---
 
+## 위치 및 서울 교통 데이터
+
+장소검색과 역지오코딩은 Backend `PlaceSearchPort`/`ReverseGeocodingPort` 뒤의 Kakao Adapter가 담당합니다. 선택된 좌표는 `CityDataAreaResolver`가 서울시 CITYDATA 지원 지역으로 변환합니다. 교통 데이터는 `TrafficDataProvider`를 통해 서울시 REST API에서 조회하며 미완성 MCP Client는 제거했습니다.
+
+```text
+MobilityRestController → MobilityDecisionOrchestrator
+  -> CurrentEvidenceUseCase
+  -> KakaoRoutingCandidateAdapter
+  -> CandidateEvaluator
+  -> SpringAiDecisionEvaluator
+  -> DecisionPersistenceService
+```
+
+---
 ## AI 추천 상세
 
 ### 입력 (`MobilityContext`)

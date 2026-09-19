@@ -79,7 +79,6 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
 
 	private boolean isMobilityDecisionRequest(HttpServletRequest request) {
 		return "POST".equals(request.getMethod())
-			&& ("/api/v1/mobility-decisions".equals(request.getRequestURI())
-				|| "/api/v2/mobility-decisions".equals(request.getRequestURI()));
+			&& "/api/v1/mobility-decisions".equals(request.getRequestURI());
 	}
 }

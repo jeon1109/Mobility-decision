@@ -3,6 +3,7 @@ package com.example.musinsaPointSystem.data.apiService;
 import org.springframework.stereotype.Service;
 
 import com.example.musinsaPointSystem.common.error.AiCommunicationException;
+import com.example.musinsaPointSystem.data.traffic.TrafficDataProvider;
 import com.example.musinsaPointSystem.dto.MobilityContext;
 import com.example.musinsaPointSystem.dto.MobilityDecision;
 import com.example.musinsaPointSystem.dto.SeoulCityData;
@@ -16,12 +17,12 @@ import lombok.RequiredArgsConstructor;
 public class RecommendationService {
 	private final RecommendationCacheService cacheService;
 	private final MobilityAgentService mobilityAgentService;
-	private final ApiService apiService;
+	private final TrafficDataProvider trafficDataProvider;
 	private final ObjectMapper objectMapper;
 	private final MobilityPerformanceMetrics metrics;
 
 	public MobilityDecision recommend(String requestKey, MobilityContext context) {
-		SeoulCityData cityData = apiService.getCityData(context.areaCode());
+		SeoulCityData cityData = trafficDataProvider.getCityData(context.areaCode(), context.areaName());
 		MobilityDecision decision = cacheService.find(requestKey).orElseGet(() -> {
 			String json = mobilityAgentService.recommend(context, cityData.toPromptSummary());
 			MobilityDecision generated = metrics.record("structured-output", () -> readDecision(json));

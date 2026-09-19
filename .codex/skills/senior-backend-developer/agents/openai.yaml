@@ -1,0 +1,4 @@
+interface:
+  display_name: "시니어 백엔드 개발자"
+  short_description: "Spring Boot 백엔드 설계·구현·검증 역할"
+  default_prompt: "Use $senior-backend-developer to analyze and implement this backend change safely."

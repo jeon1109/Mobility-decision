@@ -1,4 +1,4 @@
-package com.example.musinsaPointSystem.dto.mobilityv2;
+package com.example.musinsaPointSystem.dto.mobility;
 
 import java.util.List;
 
@@ -50,9 +50,20 @@ public record CitySituation(
 		Integer populationMax, String source) {
 	}
 
-	public record NearbySnapshot(DataStatus status, Integer count, String observedAt, String source) {
+	public record NearbyPlace(String name) {}
+
+	public record NearbySnapshot(DataStatus status, Integer count, String observedAt, String source,
+		List<NearbyPlace> places) {
+		public NearbySnapshot {
+			places = places == null ? List.of() : List.copyOf(places);
+		}
+
+		public NearbySnapshot(DataStatus status, Integer count, String observedAt, String source) {
+			this(status, count, observedAt, source, List.of());
+		}
+
 		public static NearbySnapshot unavailable() {
-			return new NearbySnapshot(DataStatus.UNAVAILABLE, null, null, SOURCE);
+			return new NearbySnapshot(DataStatus.UNAVAILABLE, null, null, SOURCE, List.of());
 		}
 	}
 

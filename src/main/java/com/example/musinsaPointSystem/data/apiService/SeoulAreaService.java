@@ -11,14 +11,14 @@ public class SeoulAreaService {
 	private static final List<SeoulArea> AREAS = List.of(
 		new SeoulArea("POI009", "광화문·덕수궁"),
 		new SeoulArea("POI014", "강남역"),
-		new SeoulArea("POI039", "서울역"),
-		new SeoulArea("POI045", "홍대입구역"),
-		new SeoulArea("POI046", "잠실역"),
-		new SeoulArea("POI021", "고속터미널역"),
-		new SeoulArea("POI033", "명동 관광특구"),
-		new SeoulArea("POI035", "이태원 관광특구"),
-		new SeoulArea("POI028", "여의도"),
-		new SeoulArea("POI019", "건대입구역")
+		new SeoulArea("POI033", "서울역"),
+		new SeoulArea("POI055", "홍대입구역(2호선)"),
+		new SeoulArea("POI119", "잠실역"),
+		new SeoulArea("POI017", "고속터미널역"),
+		new SeoulArea("POI003", "명동 관광특구"),
+		new SeoulArea("POI004", "이태원 관광특구"),
+		new SeoulArea("POI072", "여의도"),
+		new SeoulArea("POI015", "건대입구역")
 	);
 
 	public List<SeoulArea> getAreas() {

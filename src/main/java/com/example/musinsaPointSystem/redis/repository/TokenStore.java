@@ -7,5 +7,6 @@ public interface TokenStore {
 	String findRefreshToken(String userId);
 	void deleteRefreshToken(String userId);
 	void blacklist(String tokenId, Duration ttl);
+	void revokeSession(String tokenId, String userId, Duration ttl);
 	boolean isBlacklisted(String tokenId);
 }

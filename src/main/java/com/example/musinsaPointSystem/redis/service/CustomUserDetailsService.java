@@ -22,7 +22,7 @@ public class CustomUserDetailsService implements UserDetailsService {
 	private final UserRepository memberRepository;
 
 	@Override
-	@Transactional
+	@Transactional(readOnly = true)
 	public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
 		return memberRepository.findByEmail(email)
 			.map(this::createUserDetails)

@@ -6,6 +6,7 @@ import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -17,20 +18,14 @@ import com.example.musinsaPointSystem.common.error.DuplicateEmailException;
 import com.example.musinsaPointSystem.common.error.InvalidCredentialsException;
 import com.example.musinsaPointSystem.common.error.MemberNotFoundException;
 import com.example.musinsaPointSystem.common.error.PublicDataException;
-import com.example.musinsaPointSystem.data.apiService.MobilityV2RecommendationService.InvalidMobilityV2RequestException;
 import com.example.musinsaPointSystem.data.apiService.SeoulAreaService.AreaNotFoundException;
+import com.example.musinsaPointSystem.data.location.PlaceProviderException;
 
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RestControllerAdvice
 public class RestApiExceptionHandler {
-	@ExceptionHandler(InvalidMobilityV2RequestException.class)
-	public ResponseEntity<ApiErrorResponse> handleV2BadRequest(InvalidMobilityV2RequestException e) {
-		return ResponseEntity.badRequest().body(ApiErrorResponse.of(
-			"VALIDATION_ERROR", e.getMessage(), Map.of("availableModes", e.getMessage())));
-	}
-
 	@ExceptionHandler(AreaNotFoundException.class)
 	public ResponseEntity<ApiErrorResponse> handleAreaNotFound(AreaNotFoundException e) {
 		return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -64,6 +59,13 @@ public class RestApiExceptionHandler {
 			.body(ApiErrorResponse.of("INVALID_CREDENTIALS", e.getMessage()));
 	}
 
+	@ExceptionHandler(AuthenticationException.class)
+	public ResponseEntity<ApiErrorResponse> handleAuthentication(AuthenticationException e) {
+		log.warn("로그인 인증 실패: {}", e.getClass().getSimpleName());
+		return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+			.body(ApiErrorResponse.of("INVALID_CREDENTIALS", "이메일 또는 비밀번호가 일치하지 않습니다."));
+	}
+
 	@ExceptionHandler(MemberNotFoundException.class)
 	public ResponseEntity<ApiErrorResponse> handleMemberNotFound(MemberNotFoundException e) {
 		return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -82,6 +84,13 @@ public class RestApiExceptionHandler {
 		log.warn("공공데이터 조회 오류", e);
 		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiErrorResponse.of(
 			"PUBLIC_DATA_UNAVAILABLE", "서울시 실시간 데이터를 불러오지 못했습니다."));
+	}
+
+	@ExceptionHandler(PlaceProviderException.class)
+	public ResponseEntity<ApiErrorResponse> handlePlaceProvider(PlaceProviderException e) {
+		log.warn("장소 검색 서비스 오류: {}", e.getMessage());
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiErrorResponse.of(
+			"PLACE_PROVIDER_UNAVAILABLE", e.getMessage()));
 	}
 
 	@ExceptionHandler(IllegalArgumentException.class)

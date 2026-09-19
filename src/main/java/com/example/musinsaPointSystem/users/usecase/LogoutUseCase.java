@@ -25,7 +25,7 @@ public class LogoutUseCase {
 		if (remainingMillis <= 0) {
 			throw new TokenException(TokenErrorCode.TOKEN_EXPIRED);
 		}
-		tokenStore.blacklist(tokenProvider.tokenIdentifier(accessToken, claims), Duration.ofMillis(remainingMillis));
-		tokenStore.deleteRefreshToken(claims.getSubject());
+		tokenStore.revokeSession(tokenProvider.tokenIdentifier(accessToken, claims), claims.getSubject(),
+			Duration.ofMillis(remainingMillis));
 	}
 }
