@@ -26,6 +26,11 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @RestControllerAdvice
 public class RestApiExceptionHandler {
+	@ExceptionHandler(com.example.musinsaPointSystem.data.location.UnsupportedServiceAreaException.class)
+	public ResponseEntity<ApiErrorResponse> handleUnsupportedServiceArea(
+		com.example.musinsaPointSystem.data.location.UnsupportedServiceAreaException e) {
+		return ResponseEntity.badRequest().body(ApiErrorResponse.of("UNSUPPORTED_SERVICE_AREA", e.getMessage()));
+	}
 	@ExceptionHandler(AreaNotFoundException.class)
 	public ResponseEntity<ApiErrorResponse> handleAreaNotFound(AreaNotFoundException e) {
 		return ResponseEntity.status(HttpStatus.NOT_FOUND)

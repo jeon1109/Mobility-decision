@@ -8,7 +8,7 @@ COPY settings.gradle build.gradle ./
 COPY src src
 
 RUN chmod +x gradlew \
-    && ./gradlew clean bootJar --no-daemon \
+    && ./gradlew clean bootJar --no-daemon --stacktrace --console=plain \
     && find build/libs -type f -name '*.jar' ! -name '*-plain.jar' \
        -exec cp {} /workspace/app.jar \;
 

@@ -29,38 +29,54 @@ public class MobilityDecisionOrchestrator {
 	private final DecisionPersistenceService persistenceService;
 	private final MobilityPerformanceMetrics metrics;
 	private final Clock clock;
+	private final com.example.musinsaPointSystem.data.location.SeoulServiceAreaPolicy serviceAreaPolicy;
 
 	public MobilityDecisionOrchestrator(CurrentEvidenceUseCase evidenceUseCase,
 		MobilityCandidateProvider candidateProvider, CandidateEvaluator candidateEvaluator,
 		DecisionEvaluator decisionEvaluator, DecisionPersistenceService persistenceService,
-		MobilityPerformanceMetrics metrics, Clock clock) {
+		MobilityPerformanceMetrics metrics, Clock clock,
+		com.example.musinsaPointSystem.data.location.SeoulServiceAreaPolicy serviceAreaPolicy) {
 		this.evidenceUseCase = evidenceUseCase; this.candidateProvider = candidateProvider;
 		this.candidateEvaluator = candidateEvaluator; this.decisionEvaluator = decisionEvaluator;
 		this.persistenceService = persistenceService; this.metrics = metrics; this.clock = clock;
+		this.serviceAreaPolicy = serviceAreaPolicy;
 	}
 
 	public MobilityDecisionCaseResponse decide(MobilityDecisionCaseRequest request) {
+		return analyze(request, false);
+	}
+
+	public MobilityDecisionCaseResponse decideGuest(MobilityDecisionCaseRequest request) {
+		com.example.musinsaPointSystem.data.decision.guest.GuestRequestPolicy.validate(request);
+		return analyze(request, true);
+	}
+
+	private MobilityDecisionCaseResponse analyze(MobilityDecisionCaseRequest request, boolean guest) {
 		long startedAt = System.nanoTime();
+		var origin = serviceAreaPolicy.verify(request.origin());
+		var destination = serviceAreaPolicy.verify(request.destination());
+		String owner = guest ? null : currentUser();
 		CurrentEvidenceResponse evidence = metrics.record("evidence.total",
-			() -> evidenceUseCase.get(request.origin()));
+			() -> evidenceUseCase.getVerified(origin));
 		List<MobilityCandidate> candidates = metrics.record("candidate.collection.duration",
-			() -> candidateProvider.findCandidates(request.origin(), request.destination()));
+			() -> candidateProvider.findCandidates(origin, destination));
 		List<EvaluatedCandidate> evaluated = metrics.record("candidate.evaluation.duration",
-			() -> candidateEvaluator.evaluate(candidates, request.preferences(), evidence.city()));
+			() -> candidateEvaluator.evaluate(candidates, request.preferences(), evidence));
 		metrics.recordCandidateCount(evaluated.size());
-		DecisionRecommendation recommendation = decisionEvaluator.evaluate(evidence.city(), evaluated,
+		DecisionRecommendation recommendation = decisionEvaluator.evaluate(evidence, evaluated,
 			request.preferences());
-		String decisionId = persistenceService.save(currentUser(), request.origin(), request.destination(),
-			request.preferences(), evidence.city(), evaluated, recommendation);
+		String decisionId = owner == null ? "guest-" + java.util.UUID.randomUUID()
+			: persistenceService.save(owner, origin, destination, request.preferences(), evidence, evaluated, recommendation);
 		metrics.recordDuration("decision.total.duration", "success", System.nanoTime() - startedAt);
 		return new MobilityDecisionCaseResponse("2.0", decisionId,
 			OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC).toString(), evidence,
-			evaluated, recommendation);
+			evaluated, recommendation, owner == null ? "NOT_SAVED" : "SAVED");
 	}
 
 	private String currentUser() {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-		if (authentication == null || !authentication.isAuthenticated())
+		if (authentication == null || !authentication.isAuthenticated()
+			|| authentication instanceof org.springframework.security.authentication.AnonymousAuthenticationToken)
 			throw new IllegalArgumentException("로그인한 사용자 정보가 필요합니다.");
 		return authentication.getName();
 	}

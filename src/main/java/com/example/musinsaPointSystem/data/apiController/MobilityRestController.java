@@ -32,7 +32,7 @@ import com.example.musinsaPointSystem.dto.mobility.MobilityDecisionCaseResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 @RestController
-@RequestMapping("/api/v1")
+@RequestMapping("/v1")
 public class MobilityRestController {
 	private final SeoulAreaService seoulAreaService;
 	private final MobilityRecommendationService recommendationService;
@@ -90,10 +90,11 @@ public class MobilityRestController {
 		@PathVariable(name = "decisionId") String decisionId,
 		@Valid @RequestBody CandidateSelectionRequest request,
 		java.security.Principal principal) {
+		if (principal == null) throw new org.springframework.security.authentication.AuthenticationCredentialsNotFoundException("로그인이 필요합니다.");
 		return decisionPersistenceService.select(decisionId, request.candidateId(), principal.getName());
 	}
 
-	public record CandidateSelectionRequest(@NotBlank String candidateId) {}
+	public record CandidateSelectionRequest(@com.fasterxml.jackson.annotation.JsonAlias("selectedCandidateId") @NotBlank String candidateId) {}
 
 	@PostMapping(value = "/mobility/decisions", consumes = MediaType.APPLICATION_JSON_VALUE,
 		produces = MediaType.APPLICATION_JSON_VALUE)

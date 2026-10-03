@@ -1,0 +1,20 @@
+FROM eclipse-temurin:21-jre
+
+WORKDIR /app
+
+RUN groupadd --system spring \
+    && useradd --system \
+       --gid spring \
+       --no-create-home \
+       spring
+
+COPY --chown=spring:spring app.jar /app/app.jar
+
+USER spring:spring
+
+ENV SPRING_PROFILES_ACTIVE=prod
+ENV JAVA_OPTS=""
+
+EXPOSE 9091
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

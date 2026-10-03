@@ -71,9 +71,9 @@ public class securityConfig {
 				"/result",
 				"/chatroom"
 			).permitAll()
-			.requestMatchers("/api/v1/auth/logout").authenticated()
-			.requestMatchers("/api/v1/mobility/decision-cases/**").authenticated()
-			.requestMatchers("/api/**", "/v1/**", "/join/**",
+			.requestMatchers("/v1/auth/logout").authenticated()
+			.requestMatchers("/v1/mobility/decision-cases/**").authenticated()
+			.requestMatchers("/v1/**", "/join/**",
 				"/views/**", "/v3/api-docs/**", "/swagger-ui/**", "/chat/**", "/ws/**",
 				"/swagger-ui.html", "/actuator/health", "/actuator/health/**", "/actuator/info")
 			.permitAll()

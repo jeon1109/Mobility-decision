@@ -10,5 +10,12 @@ public record PlaceCandidate(
 	BigDecimal latitude,
 	BigDecimal longitude,
 	String category,
-	String provider
-) {}
+	String provider,
+	String city,
+	String district
+) {
+	public PlaceCandidate(String providerPlaceId, String name, String address, String roadAddress,
+		BigDecimal latitude, BigDecimal longitude, String category, String provider) {
+		this(providerPlaceId, name, address, roadAddress, latitude, longitude, category, provider, null, null);
+	}
+}

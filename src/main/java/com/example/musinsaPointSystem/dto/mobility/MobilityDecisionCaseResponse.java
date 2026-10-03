@@ -11,8 +11,13 @@ public record MobilityDecisionCaseResponse(
 	String generatedAt,
 	CurrentEvidenceResponse currentEvidence,
 	List<EvaluatedCandidate> candidates,
-	DecisionRecommendation recommendation
+	DecisionRecommendation recommendation,
+	String persistenceStatus
 ) {
+	public MobilityDecisionCaseResponse(String schemaVersion, String decisionId, String generatedAt,
+		CurrentEvidenceResponse currentEvidence, List<EvaluatedCandidate> candidates, DecisionRecommendation recommendation) {
+		this(schemaVersion, decisionId, generatedAt, currentEvidence, candidates, recommendation, "SAVED");
+	}
 	public MobilityDecisionCaseResponse {
 		candidates = candidates == null ? List.of() : List.copyOf(candidates);
 	}

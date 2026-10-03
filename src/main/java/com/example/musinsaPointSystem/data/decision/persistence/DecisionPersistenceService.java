@@ -32,6 +32,19 @@ public class DecisionPersistenceService {
 	public String save(String userEmail, Location origin, Location destination,
 		List<DecisionPreference> preferences, CitySituation evidence, List<EvaluatedCandidate> candidates,
 		DecisionRecommendation recommendation) {
+		return saveSnapshot(userEmail, origin, destination, preferences, evidence, candidates, recommendation);
+	}
+
+	@Transactional
+	public String save(String userEmail, Location origin, Location destination,
+		List<DecisionPreference> preferences, com.example.musinsaPointSystem.dto.mobility.CurrentEvidenceResponse evidence,
+		List<EvaluatedCandidate> candidates, DecisionRecommendation recommendation) {
+		return saveSnapshot(userEmail, origin, destination, preferences, evidence, candidates, recommendation);
+	}
+
+	private String saveSnapshot(String userEmail, Location origin, Location destination,
+		List<DecisionPreference> preferences, Object evidence, List<EvaluatedCandidate> candidates,
+		DecisionRecommendation recommendation) {
 		String id = UUID.randomUUID().toString();
 		String ids = candidates.stream().map(value -> value.candidate().candidateId())
 			.collect(java.util.stream.Collectors.joining(","));
@@ -43,6 +56,8 @@ public class DecisionPersistenceService {
 
 	@Transactional
 	public SelectionResult select(String decisionId, String candidateId, String userEmail) {
+		if (userEmail == null || userEmail.isBlank()) throw new IllegalArgumentException("로그인이 필요합니다.");
+		if (candidateId == null || candidateId.isBlank()) throw new IllegalArgumentException("이동 후보를 선택해주세요.");
 		DecisionCaseEntity entity = repository.findById(decisionId)
 			.orElseThrow(() -> new IllegalArgumentException("이동 결정 기록을 찾을 수 없습니다."));
 		if (entity.getUserEmail() != null && !entity.getUserEmail().equals(userEmail))

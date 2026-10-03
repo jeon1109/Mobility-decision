@@ -20,19 +20,22 @@ public class PlaceSearchUseCase {
 	private final PlaceSearchPort placeSearchPort;
 	private final ReverseGeocodingPort reverseGeocodingPort;
 	private final CityDataAreaResolver cityDataAreaResolver;
+	private final SeoulServiceAreaPolicy serviceAreaPolicy;
 
 	public PlaceSearchUseCase(PlaceSearchPort placeSearchPort, ReverseGeocodingPort reverseGeocodingPort,
 		CityDataAreaResolver cityDataAreaResolver) {
 		this.placeSearchPort = placeSearchPort;
 		this.reverseGeocodingPort = reverseGeocodingPort;
 		this.cityDataAreaResolver = cityDataAreaResolver;
+		this.serviceAreaPolicy = new SeoulServiceAreaPolicy(reverseGeocodingPort);
 	}
 
 	public List<PlaceCandidate> search(String keyword) {
 		String normalized = keyword == null ? "" : keyword.trim().replaceAll("\\s+", " ");
 		if (normalized.length() < 2) throw new IllegalArgumentException("검색어는 두 글자 이상 입력해주세요.");
 		if (normalized.length() > 80) throw new IllegalArgumentException("검색어는 80자 이하로 입력해주세요.");
-		return placeSearchPort.search(normalized);
+		return placeSearchPort.search(normalized).stream().map(serviceAreaPolicy::filterCandidate)
+			.filter(java.util.Objects::nonNull).toList();
 	}
 
 	public ResolvedLocation resolve(PlaceCandidate candidate) {
@@ -54,11 +57,10 @@ public class PlaceSearchUseCase {
 	}
 
 	private ResolvedLocation resolved(Location location) {
+		serviceAreaPolicy.requireSupported(new AdministrativeArea(location.city(), location.district()));
 		SeoulArea area = cityDataAreaResolver.resolve(location).orElse(null);
 		if (area != null) return new ResolvedLocation(location, area, true, null);
-		String message = StringUtils.hasText(location.city()) && location.city().startsWith("서울")
-			? "선택한 장소는 현재 서울 실시간 도시정보 지원 지역과 연결되지 않습니다."
-			: "현재 실시간 도시정보는 서울 지역을 우선 지원합니다.";
+		String message = "해당 장소의 지역 혼잡도 데이터는 제공되지 않습니다.";
 		return new ResolvedLocation(location, null, false, message);
 	}
 

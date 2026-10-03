@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/v1/places")
+@RequestMapping("/v1/places")
 public class PlaceSearchRestController {
 	private final PlaceSearchUseCase placeSearchUseCase;
 

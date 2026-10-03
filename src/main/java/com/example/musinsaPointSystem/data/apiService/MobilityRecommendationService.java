@@ -45,22 +45,25 @@ public class MobilityRecommendationService {
 	private final Clock clock;
 	private final CityDataAreaResolver areaResolver;
 	private final MobilityAgentService mobilityAgentService;
+	private final com.example.musinsaPointSystem.data.location.SeoulServiceAreaPolicy serviceAreaPolicy;
 
 	@Autowired
 	public MobilityRecommendationService(TrafficDataProvider trafficDataProvider, SeoulAreaService areaService,
 		MobilityPerformanceMetrics metrics, Clock clock, CityDataAreaResolver areaResolver,
-		MobilityAgentService mobilityAgentService) {
+		MobilityAgentService mobilityAgentService,
+		com.example.musinsaPointSystem.data.location.SeoulServiceAreaPolicy serviceAreaPolicy) {
 		this.trafficDataProvider = trafficDataProvider;
 		this.areaService = areaService;
 		this.metrics = metrics;
 		this.clock = clock;
 		this.areaResolver = areaResolver;
 		this.mobilityAgentService = mobilityAgentService;
+		this.serviceAreaPolicy = serviceAreaPolicy;
 	}
 
 	MobilityRecommendationService(TrafficDataProvider trafficDataProvider, SeoulAreaService areaService,
 		MobilityPerformanceMetrics metrics, Clock clock) {
-		this(trafficDataProvider, areaService, metrics, clock, null, null);
+		this(trafficDataProvider, areaService, metrics, clock, null, null, null);
 	}
 
 	public MobilityResponse recommend(MobilityRequest request) {
@@ -77,6 +80,12 @@ public class MobilityRecommendationService {
 	}
 
 	public MobilityResponse recommend(MobilityFlowRequest request) {
+		if (request.origin() != null || request.destinationLocation() != null) {
+			if (serviceAreaPolicy == null) throw new IllegalStateException("Service area policy is required for location requests");
+			request = new MobilityFlowRequest(request.originAreaCode(), request.destination(), request.purpose(), request.priorities(),
+				request.origin() == null ? null : serviceAreaPolicy.verify(request.origin()),
+				request.destinationLocation() == null ? null : serviceAreaPolicy.verify(request.destinationLocation()));
+		}
 		MobilityRequest compatibleRequest = new MobilityRequest(
 			request.originAreaCode(), request.purpose(), List.of(), request.toPreferences());
 		SeoulArea area = resolveArea(request);

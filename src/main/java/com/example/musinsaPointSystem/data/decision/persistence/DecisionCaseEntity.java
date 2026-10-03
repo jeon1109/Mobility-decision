@@ -61,6 +61,10 @@ public class DecisionCaseEntity {
 	public String getStatus() { return status; }
 
 	public void select(String candidateId, OffsetDateTime decidedAt) {
+		if ("USER_DECIDED".equals(status)) {
+			if (java.util.Objects.equals(selectedCandidateId, candidateId)) return;
+			throw new IllegalArgumentException("이미 최종 선택을 저장했습니다. 새 분석을 시작해주세요.");
+		}
 		this.selectedCandidateId = candidateId;
 		this.decidedAt = decidedAt;
 		this.status = "USER_DECIDED";

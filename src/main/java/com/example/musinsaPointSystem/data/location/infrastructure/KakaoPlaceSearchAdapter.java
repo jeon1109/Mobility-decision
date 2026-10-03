@@ -79,10 +79,18 @@ public class KakaoPlaceSearchAdapter implements PlaceSearchPort, ReverseGeocodin
 	}
 
 	private JsonNode get(String path, String query, BigDecimal x, BigDecimal y) {
+		String operation = query != null ? "keyword-search" : "reverse-geocode";
+		long startedAt = System.nanoTime();
 		String apiKey = properties.getApiKey() == null ? "" : properties.getApiKey().trim();
 		if (!StringUtils.hasText(apiKey)) {
+			log.warn("Kakao place API request skipped: operation={}, reason=api-key-missing, baseUrl={}",
+				operation, properties.getBaseUrl());
 			throw new PlaceProviderException("장소 검색 API가 설정되지 않았습니다.");
 		}
+
+		log.info(
+			"Kakao place API request started: operation={}, baseUrl={}, apiKeyConfigured=true, queryLength={}",
+			operation, properties.getBaseUrl(), query == null ? 0 : query.length());
 		try {
 			UriComponentsBuilder uriBuilder = UriComponentsBuilder
 				.fromUriString(properties.getBaseUrl())
@@ -96,7 +104,7 @@ public class KakaoPlaceSearchAdapter implements PlaceSearchPort, ReverseGeocodin
 			if (y != null)
 				uriBuilder.queryParam("y", y.toPlainString());
 
-			return webClient.get()
+			JsonNode response = webClient.get()
 				.uri(uriBuilder.build().encode().toUri())
 				.header(HttpHeaders.AUTHORIZATION, properties.getAuthorizationHeader())
 				.retrieve()
@@ -104,12 +112,22 @@ public class KakaoPlaceSearchAdapter implements PlaceSearchPort, ReverseGeocodin
 				.timeout(TIMEOUT)
 				.blockOptional()
 				.orElseThrow(() -> new PlaceProviderException("장소 검색 응답이 비어 있습니다."));
+
+			int documentCount = response.path("documents").isArray()
+				? response.path("documents").size()
+				: 0;
+			log.info("Kakao place API request completed: operation={}, documentCount={}, durationMs={}",
+				operation, documentCount, elapsedMillis(startedAt));
+			return response;
 		} catch (PlaceProviderException e) {
+			log.warn("Kakao place API response handling failed: operation={}, durationMs={}, message={}",
+				operation, elapsedMillis(startedAt), e.getMessage());
 			throw e;
 		} catch (WebClientResponseException e) {
 			int status = e.getStatusCode().value();
-			log.warn("Kakao place API rejected request: status={}, response={}", status,
-				safeProviderMessage(e.getResponseBodyAsString()));
+			log.warn(
+				"Kakao place API rejected request: operation={}, status={}, durationMs={}, response={}",
+				operation, status, elapsedMillis(startedAt), safeProviderMessage(e.getResponseBodyAsString()));
 			if (status == 401 || status == 403) {
 				throw new PlaceProviderException(
 					"Kakao REST API 키 또는 카카오맵 사용 권한을 확인해 주세요. (HTTP " + status + ")", e);
@@ -119,15 +137,23 @@ public class KakaoPlaceSearchAdapter implements PlaceSearchPort, ReverseGeocodin
 			}
 			throw new PlaceProviderException("Kakao 장소 검색 API 요청이 거부되었습니다. (HTTP " + status + ")", e);
 		} catch (WebClientRequestException e) {
-			log.warn("Kakao place API network failure: type={}", e.getClass().getSimpleName(), e);
+			log.warn("Kakao place API network failure: operation={}, durationMs={}, type={}",
+				operation, elapsedMillis(startedAt), e.getClass().getSimpleName(), e);
 			throw new PlaceProviderException("Kakao 장소 검색 서버에 연결할 수 없습니다.", e);
 		} catch (RuntimeException e) {
 			if (hasCause(e, TimeoutException.class)) {
+				log.warn("Kakao place API timed out: operation={}, durationMs={}, type={}",
+					operation, elapsedMillis(startedAt), e.getClass().getSimpleName());
 				throw new PlaceProviderException("Kakao 장소 검색 API 응답 시간이 초과되었습니다.", e);
 			}
-			log.warn("Unexpected Kakao place API failure: type={}", e.getClass().getSimpleName(), e);
+			log.warn("Unexpected Kakao place API failure: operation={}, durationMs={}, type={}",
+				operation, elapsedMillis(startedAt), e.getClass().getSimpleName(), e);
 			throw new PlaceProviderException("장소 검색 서비스에 연결하지 못했습니다.", e);
 		}
+	}
+
+	private long elapsedMillis(long startedAt) {
+		return Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
 	}
 
 	private String safeProviderMessage(String body) {

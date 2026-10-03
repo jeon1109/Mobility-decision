@@ -9,6 +9,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.example.musinsaPointSystem.data.decision.port.TrafficEvidencePort;
+import com.example.musinsaPointSystem.data.decision.port.IncidentEvidencePort;
+import com.example.musinsaPointSystem.data.decision.port.RoadLinkResolver;
+import com.example.musinsaPointSystem.data.evidence.mobility.*;
 
 import com.example.musinsaPointSystem.data.decision.model.NearbyStation;
 import com.example.musinsaPointSystem.data.decision.model.SubwayArrivalEvidence;
@@ -31,18 +36,43 @@ public class CurrentEvidenceUseCase {
 	private final CatchableTrainPolicy catchableTrainPolicy;
 	private final ExecutorService executor;
 	private final Clock clock;
+	private final TrafficEvidencePort trafficEvidence;
+	private final IncidentEvidencePort incidentEvidence;
+	private final RoadLinkResolver roadLinks;
+	private final com.example.musinsaPointSystem.data.location.SeoulServiceAreaPolicy serviceAreaPolicy;
 
 	public CurrentEvidenceUseCase(CityDataAreaResolver areaResolver, TrafficDataProvider trafficDataProvider,
 		NearbyStationPort nearbyStationPort, SubwayArrivalPort subwayArrivalPort,
-		CatchableTrainPolicy catchableTrainPolicy, ExecutorService executor, Clock clock) {
+		CatchableTrainPolicy catchableTrainPolicy, ExecutorService executor, Clock clock,
+		com.example.musinsaPointSystem.data.location.SeoulServiceAreaPolicy serviceAreaPolicy) {
+		this(areaResolver, trafficDataProvider, nearbyStationPort, subwayArrivalPort,
+			catchableTrainPolicy, executor, clock, links -> EvidenceBatch.unavailable(),
+			() -> EvidenceBatch.unavailable(), location -> List.of(), serviceAreaPolicy);
+	}
+
+	@Autowired
+	public CurrentEvidenceUseCase(CityDataAreaResolver areaResolver, TrafficDataProvider trafficDataProvider,
+		NearbyStationPort nearbyStationPort, SubwayArrivalPort subwayArrivalPort,
+		CatchableTrainPolicy catchableTrainPolicy, ExecutorService executor, Clock clock,
+		TrafficEvidencePort trafficEvidence, IncidentEvidencePort incidentEvidence, RoadLinkResolver roadLinks,
+		com.example.musinsaPointSystem.data.location.SeoulServiceAreaPolicy serviceAreaPolicy) {
 		this.areaResolver = areaResolver; this.trafficDataProvider = trafficDataProvider;
 		this.nearbyStationPort = nearbyStationPort; this.subwayArrivalPort = subwayArrivalPort;
 		this.catchableTrainPolicy = catchableTrainPolicy; this.executor = executor; this.clock = clock;
+		this.trafficEvidence = trafficEvidence; this.incidentEvidence = incidentEvidence; this.roadLinks = roadLinks;
+		this.serviceAreaPolicy = serviceAreaPolicy;
 	}
 
 	public CurrentEvidenceResponse get(Location origin) {
+		return getVerified(serviceAreaPolicy.verify(origin));
+	}
+
+	// Only the orchestrator may reuse a location already verified by the server policy.
+	CurrentEvidenceResponse getVerified(Location origin) {
 		validate(origin);
 		SeoulArea area = areaResolver.resolve(origin).orElse(null);
+		var trafficFuture = CompletableFuture.supplyAsync(() -> safeTraffic(origin), executor);
+		var incidentFuture = CompletableFuture.supplyAsync(() -> safeIncidents(), executor);
 		CompletableFuture<CitySituation> cityFuture = CompletableFuture.supplyAsync(() -> area == null
 			? CitySituation.unavailable(null, origin.name())
 			: trafficDataProvider.getCitySituation(area.areaCode(), area.areaName()), executor);
@@ -58,9 +88,24 @@ public class CurrentEvidenceUseCase {
 		if (stations.isEmpty()) unavailable.add("NEARBY_STATIONS");
 		if (!stations.isEmpty() && stationValues.stream().allMatch(value -> value.arrivals().isEmpty()))
 			unavailable.add("SUBWAY_ARRIVAL");
+		var traffic = trafficFuture.join();
+		var incidents = incidentFuture.join();
+		if (traffic.availability() == EvidenceAvailability.UNAVAILABLE) unavailable.add("TOPIS_TRAFFIC");
+		if (incidents.availability() == EvidenceAvailability.UNAVAILABLE) unavailable.add("TOPIS_INCIDENT");
 		return new CurrentEvidenceResponse("2.0", ZonedDateTime.now(clock)
 			.withZoneSameInstant(ZoneId.of("Asia/Seoul")).toOffsetDateTime().toString(),
-			origin, area, city, stationValues, unavailable);
+			origin, area, city, stationValues, unavailable, traffic.availability(), traffic.items(),
+			incidents.availability(), incidents.items());
+	}
+
+	private EvidenceBatch<TrafficEvidence> safeTraffic(Location location) {
+		try { return trafficEvidence.findByLinks(roadLinks.findVerifiedLinks(location)); }
+		catch (RuntimeException ignored) { return EvidenceBatch.unavailable(); }
+	}
+
+	private EvidenceBatch<IncidentEvidence> safeIncidents() {
+		try { return incidentEvidence.collectIncidents(); }
+		catch (RuntimeException ignored) { return EvidenceBatch.unavailable(); }
 	}
 
 	private StationEvidence stationEvidence(NearbyStation station) {
