@@ -42,3 +42,7 @@ out/
 !.env.example
 *.pem
 *.key
+
+### Runtime logs ###
+logs/
+*.log

@@ -4,12 +4,29 @@ import java.util.Map;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 @Component
 @ConfigurationProperties(prefix="external.topis")
 public class TopisProperties {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TopisProperties.class);
+    private final Environment environment;
+    public TopisProperties() { this.environment = null; }
+    @Autowired
+    public TopisProperties(Environment environment) { this.environment = environment; }
     private String baseUrl = "http://openapi.seoul.go.kr:8088";
-    @Value("${SEOUL_OPEN_API_KEY:}") private String apiKey = "";
+    private String apiKey = "";
+    @jakarta.annotation.PostConstruct
+    public void resolveApiKey() {
+        String source = apiKey.isBlank() ? "NONE" : "external.topis.api-key";
+        if (apiKey.isBlank() && environment != null) {
+            for (String name : List.of("SEOUL_OPEN_API_KEY", "seoul.open-api.key", "public.api.key")) {
+                String value = environment.getProperty(name);
+                if (value != null && !value.isBlank()) { setApiKey(value); source = name; break; }
+            }
+        }
+        log.info("[TOPIS-CONFIG] apiKeyPresent={} keySource={} connectivity=NOT_CHECKED", !apiKey.isBlank(), source);
+    }
     private Duration timeout = Duration.ofSeconds(3);
     private Duration trafficCacheTtl = Duration.ofSeconds(30);
     private Duration incidentCacheTtl = Duration.ofSeconds(30);

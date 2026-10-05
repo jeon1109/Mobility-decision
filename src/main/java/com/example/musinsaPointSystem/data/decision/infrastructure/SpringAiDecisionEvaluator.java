@@ -53,6 +53,7 @@ public class SpringAiDecisionEvaluator implements DecisionEvaluator {
 			ChatResponse response = metrics.record("spring.ai.duration", () -> chatClient.prompt()
 				.system("""
 					당신은 이동 후보 비교 설명기입니다. 경로를 생성하거나 시간·비용·노선·실시간 상태를
+					규칙 엔진의 fixedRecommendedCandidateId는 이미 확정되었습니다. 추천 ID와 점수를 변경하지 말고 그 후보만 설명하세요.
 					추측하지 마세요. 제공된 candidateId만 추천·대안에 사용할 수 있습니다.
 					제공된 정규화 교통 근거만 사용하고 존재하지 않는 사고나 도로 통제를 만들지 마세요.
 					UNKNOWN/UNAVAILABLE은 정상 또는 사고 없음이 아닙니다. ACTIVE와 RESOLVED를 구분하세요.
@@ -103,6 +104,7 @@ public class SpringAiDecisionEvaluator implements DecisionEvaluator {
 					"level", nullable(evidence.congestion().level())),
 				"preferences", preferences, "candidates", compactCandidates));
 			if (fullEvidence != null) {
+				input.put("fixedRecommendedCandidateId", candidates.isEmpty() ? "UNAVAILABLE" : candidates.getFirst().candidate().candidateId());
 				input.put("trafficAvailability", fullEvidence.trafficAvailability());
 				input.put("trafficEvidence", fullEvidence.traffic());
 				input.put("incidentAvailability", fullEvidence.incidentAvailability());
@@ -126,6 +128,8 @@ public class SpringAiDecisionEvaluator implements DecisionEvaluator {
 		candidates.forEach(candidate -> ids.add(candidate.candidate().candidateId()));
 		if (!ids.contains(value.recommendedCandidateId()))
 			throw new IllegalArgumentException("AI recommended unknown candidate");
+		if (!candidates.isEmpty() && !candidates.getFirst().candidate().candidateId().equals(value.recommendedCandidateId()))
+			throw new IllegalArgumentException("AI changed the fixed rule recommendation");
 		if (value.alternatives().stream().anyMatch(alternative -> !ids.contains(alternative.candidateId())))
 			throw new IllegalArgumentException("AI returned unknown alternative");
 	}

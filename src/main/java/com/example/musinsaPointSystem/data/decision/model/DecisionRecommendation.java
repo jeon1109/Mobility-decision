@@ -9,9 +9,15 @@ public record DecisionRecommendation(
 	List<Alternative> alternatives,
 	List<String> risks,
 	Double confidence,
-	boolean aiAvailable
+	boolean aiAvailable,
+	List<String> ruleReasons
 ) {
+	public DecisionRecommendation(String recommendedCandidateId, String summary, List<String> reasons,
+		List<Alternative> alternatives, List<String> risks, Double confidence, boolean aiAvailable) {
+		this(recommendedCandidateId, summary, reasons, alternatives, risks, confidence, aiAvailable, List.of());
+	}
 	public DecisionRecommendation {
+		ruleReasons = ruleReasons == null ? List.of() : List.copyOf(ruleReasons);
 		reasons = reasons == null ? List.of() : List.copyOf(reasons);
 		alternatives = alternatives == null ? List.of() : List.copyOf(alternatives);
 		risks = risks == null ? List.of() : List.copyOf(risks);

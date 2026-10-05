@@ -9,6 +9,7 @@ import io.github.resilience4j.retry.*;
 import io.micrometer.core.instrument.MeterRegistry;
 @Component
 public class TopisClient {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(TopisClient.class);
     private final WebClient web; private final TopisProperties properties; private final TopisXmlParser parser;
     private final TopisCache cache; private final MeterRegistry meters; private final Clock clock;
     private final CircuitBreakerRegistry breakers; private final RetryRegistry retries;
@@ -20,8 +21,14 @@ public class TopisClient {
             .retryOnException(TopisClient::retryable).build());
     }
     public TopisResponseDto fetch(String service,String linkId){
-        if(!Set.of("TrafficInfo","AccInfo","AccMainCode","AccSubCode","LinkInfo").contains(service)
-            ||properties.getApiKey().isBlank())throw new TopisException(false);
+        if(!Set.of("TrafficInfo","AccInfo","AccMainCode","AccSubCode","LinkInfo").contains(service)){
+            log.warn("[TOPIS] result=SKIPPED reason=INVALID_SERVICE");
+            throw new TopisException(false);
+        }
+        if(properties.getApiKey().isBlank()){
+            log.warn("[TOPIS] service={} result=SKIPPED reason=MISSING_API_KEY", service);
+            throw new TopisException(false);
+        }
         if((service.equals("TrafficInfo")||service.equals("LinkInfo"))&&(linkId==null||!linkId.matches("[0-9]+")))
             throw new TopisException(false);
         String metric=service.equals("TrafficInfo")?"traffic":service.equals("AccInfo")?"incident":"reference";
@@ -30,7 +37,12 @@ public class TopisClient {
             Duration ttl=service.equals("TrafficInfo")?properties.getTrafficCacheTtl():
                 service.equals("AccInfo")?properties.getIncidentCacheTtl():properties.getCodeCacheTtl();
             String key="mobility:topis:v1:"+("sample".equals(properties.getApiKey())?"sample:":"live:")+service+":"+(linkId==null?"all":linkId);
-            var cached=cache.get(key,ttl);if(cached.isPresent())return cached.get();
+            var cached=cache.get(key,ttl);if(cached.isPresent()){
+                var value=cached.get();
+                log.info("[TOPIS] service={} result=CACHE_HIT rows={} total={} complete={} collectedAt={}",service,value.rows().size(),value.totalCount(),value.complete(),value.collectedAt());
+                return value;
+            }
+            log.info("[TOPIS] service={} result=REQUEST_START",service);
             List<Map<String,String>> rows=new ArrayList<>();int total=0;Instant collectedAt=clock.instant();
             int pageSize="sample".equals(properties.getApiKey())?5:properties.getPageSize();
             int pageLimit="sample".equals(properties.getApiKey())?1:properties.getMaxPages();
@@ -43,8 +55,14 @@ public class TopisClient {
             }
             var result=new TopisResponseDto(total,List.copyOf(rows),collectedAt,
                 !"sample".equals(properties.getApiKey())&&rows.size()>=total);
-            cache.put(key,result,ttl);return result;
-        }catch(RuntimeException error){meters.counter("topis."+metric+".failure").increment();throw new TopisException(false);}
+            cache.put(key,result,ttl);
+            log.info("[TOPIS] service={} result=FETCH_SUCCESS rows={} total={} complete={} elapsedMs={}",service,rows.size(),total,result.complete(),(System.nanoTime()-started)/1_000_000);
+            return result;
+        }catch(RuntimeException error){
+            meters.counter("topis."+metric+".failure").increment();
+            log.warn("[TOPIS] service={} result=FETCH_FAILED elapsedMs={} errorType={}",service,(System.nanoTime()-started)/1_000_000,error.getClass().getSimpleName());
+            throw new TopisException(false);
+        }
         finally{meters.timer("topis."+metric+".duration").record(System.nanoTime()-started,java.util.concurrent.TimeUnit.NANOSECONDS);}
     }
     private TopisResponseDto request(String service,String linkId,int start,int end){
@@ -52,12 +70,19 @@ public class TopisClient {
             var builder=UriComponentsBuilder.fromUriString(properties.getBaseUrl())
                 .pathSegment(properties.getApiKey(),"xml",service,String.valueOf(start),String.valueOf(end));
             if(linkId!=null)builder.pathSegment(linkId);
-            String xml=web.get().uri(builder.build().encode().toUri()).retrieve().bodyToMono(String.class)
+            var http=web.get().uri(builder.build().encode().toUri()).retrieve().toEntity(String.class)
                 .timeout(properties.getTimeout()).block();
-            return parser.parse(xml,service,clock.instant());
+            if(http==null)throw new TopisException(false);
+            var result=parser.parse(http.getBody(),service,clock.instant());
+            log.info("[TOPIS] service={} result=HTTP_SUCCESS httpStatus={} start={} end={} rows={}",service,http.getStatusCode().value(),start,end,result.rows().size());
+            return result;
         }catch(TopisException e){throw e;}
-        catch(WebClientResponseException e){throw new TopisException(e.getStatusCode().is5xxServerError());}
+        catch(WebClientResponseException e){
+            log.warn("[TOPIS] service={} result=HTTP_FAILED httpStatus={}",service,e.getStatusCode().value());
+            throw new TopisException(e.getStatusCode().is5xxServerError());
+        }
         catch(RuntimeException e){Throwable cause=e;while(cause.getCause()!=null)cause=cause.getCause();
+            log.warn("[TOPIS] service={} result=NETWORK_OR_RESPONSE_FAILED errorType={}",service,cause.getClass().getSimpleName());
             throw new TopisException(e instanceof WebClientRequestException||cause instanceof java.util.concurrent.TimeoutException
                 ||cause instanceof java.io.IOException);}
     }

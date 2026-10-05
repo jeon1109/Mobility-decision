@@ -4,7 +4,8 @@ import com.example.musinsaPointSystem.data.evidence.mobility.IncidentEvidence.In
 /** Codes are resolved through official code APIs; exact labels only, never free-text contains(). */
 public class TopisIncidentTypeMapper {
     public IncidentCategory category(String type,String detail,Map<String,String> main,Map<String,String> sub){
-        var detailed=label(sub.get(detail));return detailed!=IncidentCategory.OTHER?detailed:label(main.get(type));
+        var detailed=label(detail==null||sub==null?null:sub.get(detail));
+        return detailed!=IncidentCategory.OTHER?detailed:label(type==null||main==null?null:main.get(type));
     }
     private IncidentCategory label(String value){
         if(value==null)return IncidentCategory.OTHER;

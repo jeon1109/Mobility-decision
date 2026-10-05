@@ -75,10 +75,14 @@ public class CurrentEvidenceUseCase {
 		var incidentFuture = CompletableFuture.supplyAsync(() -> safeIncidents(), executor);
 		CompletableFuture<CitySituation> cityFuture = CompletableFuture.supplyAsync(() -> area == null
 			? CitySituation.unavailable(null, origin.name())
-			: trafficDataProvider.getCitySituation(area.areaCode(), area.areaName()), executor);
+			: trafficDataProvider.getCitySituation(area.areaCode(), area.areaName()), executor)
+			.exceptionally(error -> CitySituation.unavailable(area == null ? null : area.areaCode(),
+				area == null ? origin.name() : area.areaName()));
 		CompletableFuture<List<NearbyStation>> stationFuture = CompletableFuture.supplyAsync(
 			() -> nearbyStationPort.findNearby(origin), executor);
 		CitySituation city = cityFuture.join();
+		if (city == null || (area != null && (!area.areaCode().equals(city.areaCode()) || !area.areaName().equals(city.areaName()))))
+			city = CitySituation.unavailable(area == null ? null : area.areaCode(), area == null ? origin.name() : area.areaName());
 		List<NearbyStation> stations = stationFuture.join();
 		List<CompletableFuture<StationEvidence>> stationEvidence = stations.stream().limit(3)
 			.map(station -> CompletableFuture.supplyAsync(() -> stationEvidence(station), executor)).toList();

@@ -73,7 +73,7 @@ public class KakaoRoutingCandidateAdapter implements MobilityCandidateProvider {
 			values.add(new MobilityCandidate("kakao-transit-" + index++, type(text(properties, "type")),
 				origin, destination, total, walking, null, integer(properties, "transfers"),
 				integer(properties.path("fare"), "value"), Reliability.MEDIUM,
-				String.join(" → ", summaries), "KAKAO_ROUTING"));
+				String.join(" → ", summaries), "KAKAO_ROUTING", List.of(), geometry(route, false)));
 			if (values.size() >= 5) break;
 		}
 		return values;
@@ -87,11 +87,12 @@ public class KakaoRoutingCandidateAdapter implements MobilityCandidateProvider {
 		Integer total = integer(routeProperties, "totalTime");
 		if (total == null) return null;
 		return new MobilityCandidate("kakao-walk", TransportType.WALK, origin, destination,
-			total, total, 0, 0, 0, Reliability.HIGH, "도보 경로", "KAKAO_ROUTING");
+			total, total, 0, 0, 0, Reliability.HIGH, "도보 경로", "KAKAO_ROUTING", List.of(), geometry(route, true));
 	}
 
 	private JsonNode get(String path, Location origin, Location destination, String stage) {
 		URI uri = UriComponentsBuilder.fromUriString(properties.getBaseUrl()).path(path)
+			.queryParam("input_coord", "WGS84").queryParam("output_coord", "WGS84")
 			.queryParam("start_x", origin.longitude().toPlainString())
 			.queryParam("start_y", origin.latitude().toPlainString())
 			.queryParam("end_x", destination.longitude().toPlainString())
@@ -107,6 +108,29 @@ public class KakaoRoutingCandidateAdapter implements MobilityCandidateProvider {
 
 	private boolean valid(Location value) {
 		return value != null && value.latitude() != null && value.longitude() != null;
+	}
+
+	// Official Kakao path.points are [x=longitude,y=latitude]. Preserve each path as a separate segment.
+	static List<List<MobilityCandidate.RoutePoint>> geometry(JsonNode route, boolean walking) {
+		List<List<MobilityCandidate.RoutePoint>> segments = new ArrayList<>();
+		if (walking) {
+			for (JsonNode leg : route.path("legs")) for (JsonNode step : leg.path("steps")) addSegment(segments, step.path("path").path("points"));
+		} else {
+			for (JsonNode step : route.path("steps")) addSegment(segments, step.path("path").path("points"));
+		}
+		return List.copyOf(segments);
+	}
+
+	private static void addSegment(List<List<MobilityCandidate.RoutePoint>> segments, JsonNode points) {
+		if (!points.isArray() || points.size() < 2 || points.size() > 10000 || segments.size() >= 128) return;
+		List<MobilityCandidate.RoutePoint> segment = new ArrayList<>();
+		for (JsonNode point : points) {
+			if (!point.isArray() || point.size() != 2 || !point.get(0).isNumber() || !point.get(1).isNumber()) return;
+			double longitude = point.get(0).asDouble(), latitude = point.get(1).asDouble();
+			if (!Double.isFinite(latitude) || !Double.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return;
+			segment.add(new MobilityCandidate.RoutePoint(latitude, longitude));
+		}
+		segments.add(List.copyOf(segment));
 	}
 
 	private TransportType type(String value) {

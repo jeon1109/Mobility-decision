@@ -5,10 +5,14 @@ import com.example.musinsaPointSystem.data.decision.port.TrafficEvidencePort;
 import com.example.musinsaPointSystem.data.evidence.mobility.*;
 @Component
 public class TopisTrafficAdapter implements TrafficEvidencePort {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TopisTrafficAdapter.class);
     private final TopisClient client;private final TopisMapper mapper;
     public TopisTrafficAdapter(TopisClient client,TopisMapper mapper){this.client=client;this.mapper=mapper;}
     public EvidenceBatch<TrafficEvidence> findByLinks(List<String> linkIds){
-        if(linkIds==null||linkIds.isEmpty())return EvidenceBatch.unavailable();
+        if(linkIds==null||linkIds.isEmpty()){
+            log.info("[TOPIS-TRAFFIC] result=SKIPPED reason=NO_VERIFIED_ROAD_LINKS");
+            return EvidenceBatch.unavailable();
+        }
         List<TrafficEvidence> rows=new ArrayList<>();boolean failed=false;
         for(String link:linkIds.stream().distinct().limit(5).toList())try{
             var result=client.fetch("TrafficInfo",link);String road=null;

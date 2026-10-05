@@ -18,8 +18,9 @@ public class TopisMapper {
         var status=start!=null&&start.isAfter(now)?IncidentStatus.SCHEDULED:IncidentStatus.UNKNOWN;
         // Expected clearance is not actual clearance. No ACTIVE/RESOLVED inference from the clock.
         var impact=category==IncidentCategory.ROAD_CONTROL?MobilityImpactType.ROAD_CONTROL:MobilityImpactType.UNKNOWN;
+        var point=TopisCoordinateConverter.convert(row.get("GRS80TM_X"),row.get("GRS80TM_Y")).orElse(null);
         return new IncidentEvidence(text(row,"ACC_ID"),category,status,text(row,"ACC_INFO"),text(row,"LINK_ID"),null,null,
-            null,null,start,end,null,collectedAt,"TOPIS",FreshnessStatus.UNKNOWN,List.of(impact),"UNKNOWN");
+            point==null?null:point.latitude(),point==null?null:point.longitude(),start,end,null,collectedAt,"TOPIS",FreshnessStatus.UNKNOWN,List.of(impact),"UNKNOWN");
     }
     private Instant time(String date,String time){
         if(date==null||time==null)return null;

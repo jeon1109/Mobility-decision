@@ -10,6 +10,7 @@ import org.xml.sax.InputSource;
 import org.xml.sax.helpers.DefaultHandler;
 @Component
 public class TopisXmlParser {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(TopisXmlParser.class);
     public TopisResponseDto parse(String xml,String service,Instant collectedAt){
         try{
             if(xml==null||xml.isBlank()) throw new TopisException(false);
@@ -23,7 +24,10 @@ public class TopisXmlParser {
             var document=builder.parse(new InputSource(new StringReader(xml)));
             String code=text(document.getDocumentElement(),"CODE");
             if("INFO-200".equals(code)) return new TopisResponseDto(0,List.of(),collectedAt,true);
-            if(!"INFO-000".equals(code)) throw new TopisException(Set.of("ERROR-500","ERROR-600","ERROR-601").contains(code));
+            if(!"INFO-000".equals(code)) {
+                log.warn("[TOPIS] result=API_ERROR apiCode={}",code.matches("[A-Z]{1,12}-[0-9]{3}")?code:"UNKNOWN");
+                throw new TopisException(Set.of("ERROR-500","ERROR-600","ERROR-601").contains(code));
+            }
             if(!service.equals(document.getDocumentElement().getTagName())) throw new TopisException(false);
             int total=Integer.parseInt(text(document.getDocumentElement(),"list_total_count"));
             if(total<0) throw new TopisException(false);

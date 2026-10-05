@@ -15,6 +15,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 @Component
 public class TopisIncidentAdapter implements IncidentEvidencePort {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(TopisIncidentAdapter.class);
 	private final TopisClient client;
 	private final TopisMapper mapper;
 	private final Clock clock;
@@ -39,10 +40,14 @@ public class TopisIncidentAdapter implements IncidentEvidencePort {
 				.record(items.stream().filter(i -> i.status() == IncidentEvidence.IncidentStatus.ACTIVE).count());
 			meters.summary("topis.incident.scheduled.count")
 				.record(items.stream().filter(i -> i.status() == IncidentEvidence.IncidentStatus.SCHEDULED).count());
-			return new EvidenceBatch<>(
-				data.complete() && items.size() == data.rows().size() ? EvidenceAvailability.AVAILABLE :
-					EvidenceAvailability.UNKNOWN, items);
+            var availability=data.complete() && items.size() == data.rows().size() ? EvidenceAvailability.AVAILABLE : EvidenceAvailability.UNKNOWN;
+            log.info("[TOPIS-INCIDENT] result=COLLECTED availability={} received={} mapped={} active={} unknown={} routeRelevance=UNKNOWN",
+                availability,data.rows().size(),items.size(),items.stream().filter(i->i.status()==IncidentEvidence.IncidentStatus.ACTIVE).count(),items.stream().filter(i->i.status()==IncidentEvidence.IncidentStatus.UNKNOWN).count());
+            log.info("[TOPIS-INCIDENT-MAP] coordinateCrs=EPSG:4326 mappedLocations={} listOnly={}",
+                items.stream().filter(IncidentEvidence::coordinateVerified).count(),items.stream().filter(i->!i.coordinateVerified()).count());
+            return new EvidenceBatch<>(availability, items);
 		} catch (RuntimeException ignored) {
+            log.warn("[TOPIS-INCIDENT] result=UNAVAILABLE reason=FETCH_OR_MAPPING_FAILED");
 			return EvidenceBatch.unavailable();
 		}
 	}
@@ -57,6 +62,7 @@ public class TopisIncidentAdapter implements IncidentEvidencePort {
 				});
 			return values;
 		} catch (RuntimeException ignored) {
+            log.warn("[TOPIS-INCIDENT] result=DICTIONARY_UNAVAILABLE service={}",service);
 			return Map.of();
 		}
 	}

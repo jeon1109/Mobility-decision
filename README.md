@@ -44,7 +44,7 @@
 
 ```
 [React Client]
-    ↓ POST /api/v1/mobility-decisions (기존 계약 유지)
+    ↓ POST /v1/mobility-decisions (기존 계약 유지)
 MobilityDecisionOrchestrator
     ├─ CurrentEvidenceUseCase (CITYDATA + 주변역 + 지하철 도착)
     ├─ MobilityCandidateProvider (Kakao Routing)
@@ -137,7 +137,7 @@ gradlew.bat bootRun --args="--spring.profiles.active=local"
 | POST   | `/v1/member/join`    | 회원가입           | `MemberResponse` |
 | POST   | `/v1/member/login`   | 로그인            | `TokenDto`       |
 | POST   | `/v1/member/reissue` | Refresh 토큰 재발급 | `TokenDto`       |
-| GET    | `/v1/member/logout`  | 로그아웃           | 200 OK           |
+| POST   | `/v1/auth/logout`    | Access Token 블랙리스트 등록 및 Refresh Token 삭제 | 200 OK |
 
 **로그인 / 재발급 / 로그아웃** 요청 시 `Authorization: Bearer {token}` 헤더가 필요합니다.
 
@@ -145,11 +145,11 @@ gradlew.bat bootRun --args="--spring.profiles.active=local"
 
 | Method | Path | 설명 |
 |---|---|---|
-| GET | `/api/v1/places/search?q=` | 장소 자동완성 |
-| POST | `/api/v1/places/resolve` | 좌표 기반 행정구역·CITYDATA 지역 판별 |
-| POST | `/api/v1/mobility/context` | Location 기준 현재 Evidence 조회 |
-| POST | `/api/v1/mobility/decision-cases` | 실제 후보 수집·평가·AI 설명·Decision 저장 |
-| POST | `/api/v1/mobility/decision-cases/{id}/selection` | 사용자 최종 후보 선택 저장 |
+| GET | `/v1/places/search?q=` | 장소 자동완성 |
+| POST | `/v1/places/resolve` | 좌표 기반 행정구역·CITYDATA 지역 판별 |
+| POST | `/v1/mobility/context` | Location 기준 현재 Evidence 조회 |
+| POST | `/v1/mobility/decision-cases` | 실제 후보 수집·평가·AI 설명·Decision 저장 |
+| POST | `/v1/mobility/decision-cases/{id}/selection` | 사용자 최종 후보 선택 저장 |
 
 DecisionCase 생성과 사용자 선택 API는 JWT 인증이 필요합니다.
 

@@ -22,10 +22,10 @@ import com.example.musinsaPointSystem.performance.MobilityPerformanceMetrics;
 
 @Service
 public class MobilityDecisionOrchestrator {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(MobilityDecisionOrchestrator.class);
 	private final CurrentEvidenceUseCase evidenceUseCase;
 	private final MobilityCandidateProvider candidateProvider;
 	private final CandidateEvaluator candidateEvaluator;
-	private final DecisionEvaluator decisionEvaluator;
 	private final DecisionPersistenceService persistenceService;
 	private final MobilityPerformanceMetrics metrics;
 	private final Clock clock;
@@ -37,7 +37,7 @@ public class MobilityDecisionOrchestrator {
 		MobilityPerformanceMetrics metrics, Clock clock,
 		com.example.musinsaPointSystem.data.location.SeoulServiceAreaPolicy serviceAreaPolicy) {
 		this.evidenceUseCase = evidenceUseCase; this.candidateProvider = candidateProvider;
-		this.candidateEvaluator = candidateEvaluator; this.decisionEvaluator = decisionEvaluator;
+		this.candidateEvaluator = candidateEvaluator;
 		this.persistenceService = persistenceService; this.metrics = metrics; this.clock = clock;
 		this.serviceAreaPolicy = serviceAreaPolicy;
 	}
@@ -59,12 +59,21 @@ public class MobilityDecisionOrchestrator {
 		CurrentEvidenceResponse evidence = metrics.record("evidence.total",
 			() -> evidenceUseCase.getVerified(origin));
 		List<MobilityCandidate> candidates = metrics.record("candidate.collection.duration",
-			() -> candidateProvider.findCandidates(origin, destination));
+			() -> candidateProvider.findCandidates(origin, destination).stream().filter(candidate -> switch (request.modeCategory()) {
+				case ANY -> true;
+				case CAR -> candidate.transportType() == MobilityCandidate.TransportType.CAR;
+				case PUBLIC_TRANSIT -> candidate.transportType() == MobilityCandidate.TransportType.BUS
+					|| candidate.transportType() == MobilityCandidate.TransportType.SUBWAY
+					|| candidate.transportType() == MobilityCandidate.TransportType.MIXED_TRANSIT;
+			}).toList());
 		List<EvaluatedCandidate> evaluated = metrics.record("candidate.evaluation.duration",
 			() -> candidateEvaluator.evaluate(candidates, request.preferences(), evidence));
 		metrics.recordCandidateCount(evaluated.size());
-		DecisionRecommendation recommendation = decisionEvaluator.evaluate(evidence, evaluated,
-			request.preferences());
+        log.info("[MOBILITY-ROUTE] candidates={} linkedCandidates={} trafficAvailability={} incidentAvailability={} policy=CONTROL_INCIDENT_CONGESTION_FIRST_WITH_DETOUR_LIMIT",
+            candidates.size(),candidates.stream().filter(c->!c.routeLinkIds().isEmpty()).count(),evidence.trafficAvailability(),evidence.incidentAvailability());
+		// Route decisions are rule-only; do not spend time or API quota on AI explanations.
+		DecisionRecommendation recommendation = RuleRecommendationPolicy.recommend(evaluated);
+        log.info("[MOBILITY-AI] result=SKIPPED reason=RULE_ONLY_DECISION");
 		String decisionId = owner == null ? "guest-" + java.util.UUID.randomUUID()
 			: persistenceService.save(owner, origin, destination, request.preferences(), evidence, evaluated, recommendation);
 		metrics.recordDuration("decision.total.duration", "success", System.nanoTime() - startedAt);

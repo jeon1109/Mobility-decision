@@ -65,6 +65,7 @@ public class CandidateEvaluator {
 	public List<EvaluatedCandidate> evaluate(List<MobilityCandidate> candidates,
 		List<DecisionPreference> preferences, CurrentEvidenceResponse evidence) {
 		if (candidates == null || candidates.isEmpty()) return List.of();
+		if (preferences == null || preferences.isEmpty()) return evaluateDefault(candidates, evidence);
 		return candidates.stream().map(candidate -> {
 			var base = evaluate(candidate, candidates, preferences, evidence.city(), false);
 			if (!isRoadMode(candidate) || candidate.routeLinkIds().isEmpty()) return base;
@@ -87,6 +88,11 @@ public class CandidateEvaluator {
 						&& evidence.incidentAvailability() == EvidenceAvailability.AVAILABLE
 						&& incident.impacts().contains(IncidentEvidence.MobilityImpactType.ROAD_CONTROL)) {
 						risks.add("ROAD_CONTROL_RISK: 경로 링크의 현재 도로 통제가 확인되었습니다."); penalty += 15 * weight;
+					} else if (incident.status() == IncidentEvidence.IncidentStatus.ACTIVE
+						&& incident.freshness() == FreshnessStatus.FRESH && incident.observedAt() != null
+						&& evidence.incidentAvailability() == EvidenceAvailability.AVAILABLE
+						&& incident.category() != IncidentEvidence.IncidentCategory.OTHER) {
+						risks.add("INCIDENT_RISK: 경로 링크에서 현재 돌발상황이 확인되었습니다."); penalty += 8 * weight;
 					} else {
 						risks.add("경로 링크에 돌발 기록이 있으나 현재 영향은 확인되지 않았습니다.");
 					}
@@ -95,6 +101,36 @@ public class CandidateEvaluator {
 			return new EvaluatedCandidate(candidate, Math.max(0, base.score() - penalty), base.insights(), risks, base.matchedPreferences());
 		}).sorted(Comparator.comparingDouble(EvaluatedCandidate::score).reversed()).toList();
 	}
+
+	private List<EvaluatedCandidate> evaluateDefault(List<MobilityCandidate> candidates, CurrentEvidenceResponse evidence) {
+		var evaluated = evaluate(candidates, List.of(DecisionPreference.AVOID_CONGESTION), evidence);
+		int fastest = candidates.stream().map(MobilityCandidate::estimatedDurationSeconds)
+			.filter(v -> v != null && v >= 0).mapToInt(Integer::intValue).min().orElse(-1);
+		double limit = fastest < 0 ? Double.MAX_VALUE : fastest + Math.min(600.0, fastest * 0.35);
+		return evaluated.stream().map(value -> {
+			Integer duration = value.candidate().estimatedDurationSeconds();
+			List<String> insights = new ArrayList<>(value.insights());
+			boolean known = duration != null && duration >= 0;
+			insights.add(known ? "확인된 예상 소요시간과 검증 가능한 위험을 함께 비교했습니다." : "이 후보의 예상 소요시간은 확인되지 않았습니다.");
+            if(isRoadMode(value.candidate()) && value.candidate().routeLinkIds().isEmpty())
+                insights.add("TOPIS 도로 링크와 연결되지 않아 이 경로의 혼잡·돌발 회피 여부는 확인할 수 없습니다.");
+			if (known && duration > limit) insights.add("기준보다 우회 시간이 커 대안으로만 제시합니다.");
+			double timePenalty = known && fastest > 0 ? Math.max(0, (duration - fastest) * 10.0 / fastest) : 0;
+			return new EvaluatedCandidate(value.candidate(), Math.max(0, value.score() - timePenalty), insights, value.risks(), List.of());
+		}).sorted(Comparator.<EvaluatedCandidate>comparingInt(v -> {
+			Integer duration = v.candidate().estimatedDurationSeconds();
+			return fastest >= 0 && (duration == null || duration < 0 || duration > limit) ? 1 : 0;
+        }).thenComparingInt(v -> verifiedRiskCount(v,"ROAD_CONTROL_RISK:"))
+            .thenComparingInt(v -> verifiedRiskCount(v,"INCIDENT_RISK:"))
+            .thenComparingInt(v -> verifiedRiskCount(v,"TRAVEL_TIME_VARIABILITY:"))
+            .thenComparing(Comparator.comparingDouble(EvaluatedCandidate::score).reversed())
+			.thenComparingInt(v -> v.candidate().estimatedDurationSeconds() == null ? Integer.MAX_VALUE : v.candidate().estimatedDurationSeconds())
+			.thenComparing(v -> v.candidate().candidateId())).toList();
+	}
+
+    private int verifiedRiskCount(EvaluatedCandidate value,String prefix){
+        return (int)value.risks().stream().filter(r->r.startsWith(prefix)).count();
+    }
 
 	private double rewardMinimum(MobilityCandidate current, List<MobilityCandidate> all,
 		Function<MobilityCandidate, Integer> extractor, double reward, String insight,
